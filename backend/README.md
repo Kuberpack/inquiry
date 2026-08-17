@@ -15,7 +15,7 @@ with category/deadline/priority extracted automatically by Groq (Llama 3.3).
 
 ```bash
 cp .env.example .env
-# fill in ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
+# fill in GROQ_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
 pip install -r requirements.txt
 ```
 
@@ -43,7 +43,27 @@ Run this on a schedule — simplest is a cron job every 2-5 minutes:
 Adjust `GMAIL_QUERY` in `.env` to scope which mail gets pulled — e.g. a
 label you create just for enquiries, instead of the whole inbox.
 
-## 5. WhatsApp (once Business API is ready)
+## 5. Filtering personal mail out of the dashboard
+
+If every account in `GMAIL_ACCOUNTS` is a dedicated business inbox, `GMAIL_QUERY`
+alone is usually enough. For an account that's someone's actual personal
+inbox (mixed with business mail), two layers work together:
+
+1. **Every message is triaged by the LLM either way** — `extraction.py` asks
+   Groq to classify `is_business_relevant` alongside the other fields, and
+   `gmail_ingest.py` never inserts a message flagged as personal/promotional
+   into `enquiries`. No setup needed; this alone catches most of it.
+2. **For an inbox that's mostly non-business mail**, cut Groq calls and be
+   more certain nothing personal is even considered: create a Gmail filter
+   that labels business-relevant senders (known customer/supplier domains,
+   or subject keywords like "enquiry"/"quotation"/"order"), then scope that
+   one account to the label via `GMAIL_QUERY_OVERRIDES` in `.env`:
+   ```
+   GMAIL_QUERY_OVERRIDES={"rahul@personal-domain.com": "label:Business is:unread"}
+   ```
+   Accounts not listed here keep using the global `GMAIL_QUERY`.
+
+## 6. WhatsApp (once Business API is ready)
 
 `ingest/whatsapp_webhook.py` is a ready-to-deploy FastAPI webhook. Once
 you've set up WhatsApp Business API (Meta Cloud API directly, or a BSP
@@ -59,7 +79,7 @@ the same `WHATSAPP_VERIFY_TOKEN` you set in `.env`. You'll need this
 running behind a public HTTPS URL (a reverse proxy or a tunnel like
 ngrok for testing).
 
-## 6. Daily digest (reminder emails)
+## 7. Daily digest (reminder emails)
 
 `ingest/daily_digest.py` sends one email a day (see
 `.github/workflows/daily-digest.yml`, runs at 09:00 IST) summarizing every
@@ -86,5 +106,5 @@ configure:
 **Secrets** (sensitive): `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_OAUTH_TOKENS_JSON`,
 `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GMAIL_ACCOUNTS`
 
-**Variables** (not sensitive): `GMAIL_QUERY`, `DIGEST_FROM_ACCOUNT`,
-`DIGEST_RECIPIENTS`, `DASHBOARD_URL`
+**Variables** (not sensitive): `GMAIL_QUERY`, `GMAIL_QUERY_OVERRIDES`,
+`DIGEST_FROM_ACCOUNT`, `DIGEST_RECIPIENTS`, `DASHBOARD_URL`

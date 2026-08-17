@@ -14,9 +14,16 @@ Setup required (one-time per Gmail account):
    log in with that specific account when the browser opens. Each account
    gets its own saved token (token_<account>.json), so future runs are
    silent for all of them.
+
+Filtering personal mail out of the dashboard (for an account that isn't a
+dedicated business inbox): every message also gets an is_business_relevant
+check from extraction.py, and non-relevant ones are never inserted. For a
+mixed inbox getting a lot of unrelated mail, also set GMAIL_QUERY_OVERRIDES
+to scope that account to a Gmail label — see the comment above query_for().
 """
 
 import base64
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -41,13 +48,32 @@ CREDENTIALS_PATH = "credentials.json"
 GMAIL_ACCOUNTS = [a.strip() for a in os.environ.get("GMAIL_ACCOUNTS", "default").split(",") if a.strip()]
 
 # Only pull mail matching this Gmail search query — narrow it to the inbox
-# or label you actually want tracked (e.g. a label like "Enquiries").
+# or label you actually want tracked (e.g. a label like "Enquiries"). This is
+# the default for every account that doesn't have its own override below.
 GMAIL_QUERY = os.environ.get("GMAIL_QUERY", "is:unread")
+
+# Per-account query overrides, for an inbox that's mixed personal + business
+# mail (rather than a dedicated business address). Set up a Gmail filter that
+# labels business-relevant senders (known customer/supplier domains, or
+# keywords like "enquiry"/"quotation"/"order" in the subject), then scope
+# that account to the label here so nothing else from that inbox is even
+# considered — this is on top of, not instead of, the is_business_relevant
+# check in extraction.py, which catches whatever slips past the label.
+# JSON object mapping account -> query string, e.g.:
+#   GMAIL_QUERY_OVERRIDES={"rahul@personal-domain.com": "label:Business is:unread"}
+try:
+    GMAIL_QUERY_OVERRIDES = json.loads(os.environ.get("GMAIL_QUERY_OVERRIDES", "{}"))
+except json.JSONDecodeError:
+    GMAIL_QUERY_OVERRIDES = {}
 
 
 def token_path_for(account: str) -> str:
     safe_name = re.sub(r"[^a-zA-Z0-9]+", "_", account)
     return f"token_{safe_name}.json"
+
+
+def query_for(account: str) -> str:
+    return GMAIL_QUERY_OVERRIDES.get(account, GMAIL_QUERY)
 
 
 def get_gmail_service(account: str):
@@ -95,7 +121,8 @@ def get_message_body(payload: dict) -> str:
 
 def poll_account(account: str) -> None:
     service = get_gmail_service(account)
-    results = service.users().messages().list(userId="me", q=GMAIL_QUERY, maxResults=25).execute()
+    query = query_for(account)
+    results = service.users().messages().list(userId="me", q=query, maxResults=25).execute()
     messages = results.get("messages", [])
 
     if not messages:
@@ -116,29 +143,32 @@ def poll_account(account: str) -> None:
 
         extracted = extract_fields(full_text)
 
-        record = {
-            "source": "gmail",
-            # Prefix with the account so message IDs can never collide across mailboxes
-            "source_message_id": f"{account}:{msg_id}",
-            "sender_name": sender,
-            "sender_contact": sender,
-            "raw_text": full_text[:5000],  # cap length for storage
-            "received_at": received_at.isoformat(),
-            "category": extracted.get("category"),
-            "summary": extracted.get("summary"),
-            "deadline": extracted.get("deadline"),
-            "needs_deadline": extracted.get("needs_deadline", False),
-            "priority": extracted.get("priority", "medium"),
-        }
+        if extracted.get("is_business_relevant", True):
+            record = {
+                "source": "gmail",
+                # Prefix with the account so message IDs can never collide across mailboxes
+                "source_message_id": f"{account}:{msg_id}",
+                "sender_name": sender,
+                "sender_contact": sender,
+                "raw_text": full_text[:5000],  # cap length for storage
+                "received_at": received_at.isoformat(),
+                "category": extracted.get("category"),
+                "summary": extracted.get("summary"),
+                "deadline": extracted.get("deadline"),
+                "needs_deadline": extracted.get("needs_deadline", False),
+                "priority": extracted.get("priority", "medium"),
+            }
+            upsert_enquiry(record)
+            print(f"[{account}] Ingested: {subject[:60]}")
+        else:
+            # Personal/promotional/unrelated — keep it out of the dashboard
+            # entirely. Still marked read below so it isn't re-checked forever.
+            print(f"[{account}] Skipped (not business-relevant): {subject[:60]}")
 
-        upsert_enquiry(record)
-
-        # Mark as read so this message isn't re-picked-up on the next poll
+        # Mark as read either way so this message isn't re-picked-up on the next poll
         service.users().messages().modify(
             userId="me", id=msg_id, body={"removeLabelIds": ["UNREAD"]}
         ).execute()
-
-        print(f"[{account}] Ingested: {subject[:60]}")
 
 
 def poll_gmail() -> None:
