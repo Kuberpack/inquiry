@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
 import Analytics from './Analytics'
+import SalesApp from './sales/SalesApp'
+import { convertEnquiryToSalesEnquiry } from './sales/salesClient'
 
 const PAGE_SIZE = 30
 
@@ -35,7 +37,7 @@ function formatDateTime(iso) {
   })
 }
 
-function EnquiryRow({ row, onUpdate, selected, onToggleSelect }) {
+function EnquiryRow({ row, onUpdate, selected, onToggleSelect, onConvertToSales }) {
   const [expanded, setExpanded] = useState(false)
   const [local, setLocal] = useState(row)
   const editingRef = useRef(false)
@@ -134,9 +136,14 @@ function EnquiryRow({ row, onUpdate, selected, onToggleSelect }) {
           </label>
         </div>
 
-        <button className="link-btn" onClick={() => setExpanded((x) => !x)}>
-          {expanded ? 'Hide details' : 'Notes & original message'}
-        </button>
+        <div className="card-actions">
+          <button className="link-btn" onClick={() => setExpanded((x) => !x)}>
+            {expanded ? 'Hide details' : 'Notes & original message'}
+          </button>
+          <button className="link-btn" onClick={() => onConvertToSales(row)}>
+            Convert to Sales Enquiry →
+          </button>
+        </div>
 
         {expanded && (
           <div className="expanded">
@@ -171,8 +178,10 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [reassignValue, setReassignValue] = useState('')
-  const [view, setView] = useState('list') // list | analytics
+  const [view, setView] = useState('list') // list | analytics | sales
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [salesTarget, setSalesTarget] = useState(null) // { doc, mode, id } | null — set when jumping in from an enquiry card
+  const [salesNavKey, setSalesNavKey] = useState(0)
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
@@ -230,6 +239,17 @@ export default function App() {
   }
 
   const clearSelection = () => setSelected(new Set())
+
+  const handleConvertToSales = async (row) => {
+    try {
+      const created = await convertEnquiryToSalesEnquiry(row)
+      setSalesTarget({ doc: 'enquiry', mode: 'form', id: created.id })
+      setSalesNavKey((k) => k + 1)
+      setView('sales')
+    } catch (err) {
+      setError(`Convert to Sales Enquiry failed: ${err.message}`)
+    }
+  }
 
   const bulkMarkDone = async () => {
     const ids = Array.from(selected)
@@ -298,6 +318,7 @@ export default function App() {
             <div className="view-toggle">
               <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>List</button>
               <button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button>
+              <button className={view === 'sales' ? 'active' : ''} onClick={() => setView('sales')}>Sales</button>
             </div>
             <button className="refresh-btn" onClick={fetchRows} disabled={loading}>
               {loading ? 'Refreshing…' : 'Refresh'}
@@ -319,9 +340,13 @@ export default function App() {
         </div>
       </header>
 
-      {view === 'analytics' ? (
-        <Analytics rows={rows} />
-      ) : (
+      {view === 'analytics' && <Analytics rows={rows} />}
+
+      {view === 'sales' && (
+        <SalesApp key={salesNavKey} initialScreen={salesTarget || { mode: 'list' }} />
+      )}
+
+      {view === 'list' && (
         <>
           <div className="toolbar">
             <div className="tabs">
@@ -376,6 +401,7 @@ export default function App() {
                 onUpdate={onUpdate}
                 selected={selected.has(row.id)}
                 onToggleSelect={toggleSelect}
+                onConvertToSales={handleConvertToSales}
               />
             ))}
           </main>

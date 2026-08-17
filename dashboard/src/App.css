@@ -255,6 +255,15 @@ h1 span {
 .bulk-btn:disabled { opacity: 0.5; cursor: default; }
 .bulk-btn-clear { background: transparent; color: var(--surface); text-decoration: underline; }
 
+/* For the same "secondary action" role as .bulk-btn-clear, but on a light
+   surface (forms, modals) rather than the dark .bulk-bar. */
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--slate); }
+
 /* ---------- List / Cards ---------- */
 
 .list {
@@ -393,6 +402,15 @@ h1 span {
   cursor: pointer;
   font-family: 'IBM Plex Sans', sans-serif;
 }
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-actions .link-btn { margin-top: 10px; }
 
 .expanded {
   margin-top: 12px;
@@ -574,6 +592,264 @@ h1 span {
   .bar-list-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- Sales (Sales Enquiry / Sales Quotation) ---------- */
+
+.sales-app { padding-top: 8px; }
+
+.sales-doc-toggle { margin-bottom: 18px; }
+
+.status-pill {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-weight: 500;
+  background: var(--board);
+  color: var(--ink-soft);
+}
+.status-pill.status-confirmed { background: var(--teal-soft); color: var(--teal); }
+.status-pill.status-draft { background: var(--mustard-soft); color: var(--mustard); }
+
+.sales-table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.sales-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.sales-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.sales-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.sales-table tbody tr { cursor: pointer; }
+.sales-table tbody tr:hover { background: var(--board); }
+.sales-table tbody tr:last-child td { border-bottom: none; }
+
+.sales-form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 20px 22px 24px;
+}
+
+.sales-form-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sales-form-header h2 {
+  font-family: 'Zilla Slab', serif;
+  font-size: 22px;
+  margin: 0;
+  color: var(--ink);
+}
+
+.sales-form h3 {
+  font-family: 'Zilla Slab', serif;
+  font-size: 16px;
+  margin: 24px 0 10px;
+  color: var(--ink);
+}
+
+.sales-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px 16px;
+}
+
+.sales-field, .sales-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
+.sales-field input, .sales-field select, .sales-field textarea,
+.sales-grid input, .sales-grid select, .sales-grid textarea {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 9px;
+  background: #fff;
+  resize: vertical;
+}
+
+.span-2 { grid-column: span 2; }
+
+.line-items-table-wrap { overflow-x: auto; }
+
+.line-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.line-items-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  padding: 6px 8px;
+}
+.line-items-table td { padding: 4px 8px; }
+.line-items-table input, .line-items-table select {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: #fff;
+  width: 100%;
+}
+.line-items-table .qty-input, .line-items-table .price-input { width: 80px; }
+.line-items-table .unit-input { width: 70px; }
+.line-items-table .line-total {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sales-form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.sales-totals {
+  margin-top: 16px;
+  max-width: 320px;
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sales-totals-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.sales-totals-grand {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+/* ---------- Modal ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(35, 33, 29, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: 6px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(35, 33, 29, 0.25);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-header h2 {
+  font-family: 'Zilla Slab', serif;
+  font-size: 18px;
+  margin: 0;
+  color: var(--ink);
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0;
+}
+
+.modal-body { padding: 18px 20px; }
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.modal-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
+.modal-grid input, .modal-grid select {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 9px;
+  background: #fff;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 700px) {
+  .sales-grid { grid-template-columns: 1fr 1fr; }
+  .modal-grid { grid-template-columns: 1fr; }
+  .span-2 { grid-column: span 1; }
+}
+
 @media (max-width: 600px) {
   .app { padding: 0 14px 48px; }
 
@@ -603,4 +879,12 @@ h1 span {
   .stat-value { font-size: 22px; }
   .bar-row { grid-template-columns: 72px 1fr 28px; gap: 6px; }
   .bar-label { font-size: 11.5px; }
+
+  .sales-form { padding: 16px 14px 18px; }
+  .sales-grid { grid-template-columns: 1fr; }
+  .span-2 { grid-column: span 1; }
+  .sales-totals { max-width: none; }
+  .sales-form-actions button { flex: 1; }
+  .modal-body { padding: 14px; }
+  .modal-footer { padding: 12px 14px; }
 }

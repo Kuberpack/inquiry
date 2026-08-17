@@ -10,6 +10,11 @@ Run `inquiry-dashboard-schema-update.sql` (in the parent folder) in the
 Supabase SQL editor — it adds a `notes` column and sets up access policies
 so the dashboard can read/update using the publishable key.
 
+If you want the Sales Enquiry / Sales Quotation module (see §6 below), also
+run `backend/sales-schema.sql` — it's additive (new tables only, nothing in
+`enquiries` changes) but is a separate migration since it's a bigger chunk
+of schema.
+
 ## 2. Set up environment
 
 ```bash
@@ -39,7 +44,26 @@ Opens at `http://localhost:5173`.
 - "Notes & original message" expands to show the raw message text and a
   free-text notes field
 
-## 5. Deploying to Vercel
+## 5. Sales Enquiry / Sales Quotation module
+
+A lightweight, in-house take on the "Lead Management" module of the ERP the
+company evaluated — buyer/item masters plus two documents:
+
+- **Sales Enquiry** — convert any logged enquiry into a formal document
+  (buyer, delivery address, terms, POC, line items) via the "Convert to
+  Sales Enquiry →" button on its card, or start one from scratch under the
+  Sales tab. Draft or confirm.
+- **Sales Quotation** — once a Sales Enquiry is confirmed, "Convert to
+  Sales Quotation" carries the buyer/items forward and adds per-line tax
+  rate, a discount, and GST totals (CGST+SGST if the buyer is in the same
+  state as Kuberpack, IGST otherwise — see `SUPPLIER_STATE` in
+  `src/sales/salesClient.js` if that ever needs to change).
+
+Deliberately out of scope for v1 (see the comment at the top of
+`backend/sales-schema.sql` for the full list): inventory/stock tracking,
+GSTIN lookup-and-verify, document amendments, bulk upload, RCM.
+
+## 6. Deploying to Vercel
 
 The project deploys to Vercel as a static Vite build, gated by HTTP Basic
 Auth (`middleware.js`) since there's no login screen. One-time setup:
