@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from './supabaseClient'
+import Analytics from './Analytics'
+
+const PAGE_SIZE = 30
 
 const STATUS_OPTIONS = ['new', 'in_progress', 'done']
 const STATUS_LABELS = { new: 'New', in_progress: 'In Progress', done: 'Done' }
@@ -168,6 +171,8 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(() => new Set())
   const [reassignValue, setReassignValue] = useState('')
+  const [view, setView] = useState('list') // list | analytics
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
@@ -273,6 +278,10 @@ export default function App() {
       })
   }, [rows, statusFilter, sourceFilter, search])
 
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [statusFilter, sourceFilter, search])
+
+  const visible = filtered.slice(0, visibleCount)
+
   const counts = useMemo(() => {
     const open = rows.filter((r) => r.status !== 'done')
     const overdue = open.filter((r) => urgency(r) === 'overdue')
@@ -285,9 +294,15 @@ export default function App() {
       <header className="header">
         <div className="header-top">
           <h1>Kuberpack <span>Enquiry Log</span></h1>
-          <button className="refresh-btn" onClick={fetchRows} disabled={loading}>
-            {loading ? 'Refreshing…' : 'Refresh'}
-          </button>
+          <div className="header-actions">
+            <div className="view-toggle">
+              <button className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>List</button>
+              <button className={view === 'analytics' ? 'active' : ''} onClick={() => setView('analytics')}>Analytics</button>
+            </div>
+            <button className="refresh-btn" onClick={fetchRows} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
         </div>
         <div className="flute" />
         <div className="counts">
@@ -304,62 +319,74 @@ export default function App() {
         </div>
       </header>
 
-      <div className="toolbar">
-        <div className="tabs">
-          <button className={statusFilter === 'open' ? 'active' : ''} onClick={() => setStatusFilter('open')}>Open</button>
-          <button className={statusFilter === 'needs_deadline' ? 'active' : ''} onClick={() => setStatusFilter('needs_deadline')}>Needs Deadline</button>
-          <button className={statusFilter === 'done' ? 'active' : ''} onClick={() => setStatusFilter('done')}>Done</button>
-          <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>All</button>
-        </div>
-        <select className="source-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-          <option value="all">All sources</option>
-          <option value="gmail">Gmail</option>
-          <option value="whatsapp">WhatsApp</option>
-        </select>
-        <input
-          className="search-input"
-          type="text"
-          placeholder="Search sender or message…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {selected.size > 0 && (
-        <div className="bulk-bar">
-          <span>{selected.size} selected</span>
-          <button className="bulk-btn" onClick={bulkMarkDone}>Mark done</button>
-          <div className="bulk-reassign">
+      {view === 'analytics' ? (
+        <Analytics rows={rows} />
+      ) : (
+        <>
+          <div className="toolbar">
+            <div className="tabs">
+              <button className={statusFilter === 'open' ? 'active' : ''} onClick={() => setStatusFilter('open')}>Open</button>
+              <button className={statusFilter === 'needs_deadline' ? 'active' : ''} onClick={() => setStatusFilter('needs_deadline')}>Needs Deadline</button>
+              <button className={statusFilter === 'done' ? 'active' : ''} onClick={() => setStatusFilter('done')}>Done</button>
+              <button className={statusFilter === 'all' ? 'active' : ''} onClick={() => setStatusFilter('all')}>All</button>
+            </div>
+            <select className="source-select" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
+              <option value="all">All sources</option>
+              <option value="gmail">Gmail</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
             <input
+              className="search-input"
               type="text"
-              placeholder="Reassign to…"
-              value={reassignValue}
-              onChange={(e) => setReassignValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') bulkReassign() }}
+              placeholder="Search sender or message…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
-            <button className="bulk-btn" onClick={bulkReassign} disabled={!reassignValue.trim()}>Apply</button>
           </div>
-          <button className="bulk-btn bulk-btn-clear" onClick={clearSelection}>Clear</button>
-        </div>
+
+          {selected.size > 0 && (
+            <div className="bulk-bar">
+              <span>{selected.size} selected</span>
+              <button className="bulk-btn" onClick={bulkMarkDone}>Mark done</button>
+              <div className="bulk-reassign">
+                <input
+                  type="text"
+                  placeholder="Reassign to…"
+                  value={reassignValue}
+                  onChange={(e) => setReassignValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') bulkReassign() }}
+                />
+                <button className="bulk-btn" onClick={bulkReassign} disabled={!reassignValue.trim()}>Apply</button>
+              </div>
+              <button className="bulk-btn bulk-btn-clear" onClick={clearSelection}>Clear</button>
+            </div>
+          )}
+
+          {error && <div className="error-banner">{error}</div>}
+
+          <main className="list">
+            {loading && rows.length === 0 && <p className="empty">Loading enquiries…</p>}
+            {!loading && filtered.length === 0 && (
+              <p className="empty">Nothing here. New enquiries will show up automatically.</p>
+            )}
+            {visible.map((row) => (
+              <EnquiryRow
+                key={row.id}
+                row={row}
+                onUpdate={onUpdate}
+                selected={selected.has(row.id)}
+                onToggleSelect={toggleSelect}
+              />
+            ))}
+          </main>
+
+          {visibleCount < filtered.length && (
+            <button className="load-more-btn" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
+              Load more ({filtered.length - visibleCount} remaining)
+            </button>
+          )}
+        </>
       )}
-
-      {error && <div className="error-banner">{error}</div>}
-
-      <main className="list">
-        {loading && rows.length === 0 && <p className="empty">Loading enquiries…</p>}
-        {!loading && filtered.length === 0 && (
-          <p className="empty">Nothing here. New enquiries will show up automatically.</p>
-        )}
-        {filtered.map((row) => (
-          <EnquiryRow
-            key={row.id}
-            row={row}
-            onUpdate={onUpdate}
-            selected={selected.has(row.id)}
-            onToggleSelect={toggleSelect}
-          />
-        ))}
-      </main>
     </div>
   )
 }
