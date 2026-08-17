@@ -113,6 +113,16 @@ h1 span {
 .count-overdue strong { color: var(--rust); }
 .count-flag strong { color: var(--mustard); }
 
+.count-item-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.count-item-btn:hover strong { text-decoration: underline; }
+
 /* ---------- Toolbar ---------- */
 
 .toolbar {
@@ -170,6 +180,53 @@ h1 span {
   margin-bottom: 16px;
 }
 
+/* ---------- Bulk action bar ---------- */
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.bulk-reassign {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.bulk-reassign input {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  border: 1px solid var(--ink-soft);
+  border-radius: 3px;
+  padding: 6px 8px;
+  min-width: 140px;
+}
+
+.bulk-btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: var(--mustard);
+  color: var(--ink);
+  border: none;
+  padding: 7px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.bulk-btn:disabled { opacity: 0.5; cursor: default; }
+.bulk-btn-clear { background: transparent; color: var(--surface); text-decoration: underline; }
+
 /* ---------- List / Cards ---------- */
 
 .list {
@@ -193,6 +250,8 @@ h1 span {
   overflow: hidden;
 }
 
+.card.selected { outline: 2px solid var(--mustard); outline-offset: -1px; }
+
 .card-strip { width: 5px; flex-shrink: 0; background: var(--line); }
 .urgency-overdue .card-strip { background: var(--rust); }
 .urgency-soon .card-strip { background: var(--mustard); }
@@ -212,6 +271,14 @@ h1 span {
   gap: 10px;
   margin-bottom: 8px;
   flex-wrap: wrap;
+}
+
+.select-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--mustard);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .badge {
