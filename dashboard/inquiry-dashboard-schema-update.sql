@@ -17,3 +17,8 @@ create policy "Allow anon read" on enquiries
 drop policy if exists "Allow anon update" on enquiries;
 create policy "Allow anon update" on enquiries
     for update using (true);
+
+-- Required for the dashboard's real-time updates (Supabase Realtime broadcasts
+-- row changes to subscribed clients only for tables in this publication).
+-- Safe to run even if the table is already in the publication.
+alter publication supabase_realtime add table enquiries;
