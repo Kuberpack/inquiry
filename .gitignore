@@ -1,0 +1,42 @@
+# Environment and secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.local
+
+# Google OAuth (obtain locally or via CI secrets)
+credentials.json
+token.json
+token_*.json
+
+# Logs and OS
+*.log
+ingest.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
