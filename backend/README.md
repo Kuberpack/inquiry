@@ -1,7 +1,7 @@
 # Unified enquiry backend — Gmail + WhatsApp ingestion
 
 Gets messages from Gmail (and later WhatsApp) into one `enquiries` table,
-with category/deadline/priority extracted automatically by Claude.
+with category/deadline/priority extracted automatically by Groq (Llama 3.3).
 
 ## 1. Set up Supabase (database)
 
@@ -59,8 +59,32 @@ the same `WHATSAPP_VERIFY_TOKEN` you set in `.env`. You'll need this
 running behind a public HTTPS URL (a reverse proxy or a tunnel like
 ngrok for testing).
 
+## 6. Daily digest (reminder emails)
+
+`ingest/daily_digest.py` sends one email a day (see
+`.github/workflows/daily-digest.yml`, runs at 09:00 IST) summarizing every
+open enquiry that's overdue, due within 2 days, or missing a deadline —
+grouped by who it's assigned to. It reuses the same Gmail OAuth token as
+ingestion, so no new auth setup is needed.
+
+In `.env` (or as GitHub Actions repo **variables**, not secrets — see
+below):
+
+- `DIGEST_FROM_ACCOUNT` — which of your `GMAIL_ACCOUNTS` to send from
+- `DIGEST_RECIPIENTS` — comma-separated list of who receives it
+- `DASHBOARD_URL` — optional, linked at the top of the email
+
+Run it manually to test: `cd ingest && python daily_digest.py`.
+
 ## What's next
 
 Once messages are flowing into `enquiries`, the dashboard just reads from
-this table, and the reminder engine is a scheduled job that queries for
-`status != 'done' AND (deadline < now() OR needs_deadline = true)`.
+this table. The Gmail poll and daily digest both run as scheduled GitHub
+Actions — see the repo's Settings > Secrets and variables > Actions to
+configure:
+
+**Secrets** (sensitive): `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_OAUTH_TOKENS_JSON`,
+`GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GMAIL_ACCOUNTS`
+
+**Variables** (not sensitive): `GMAIL_QUERY`, `DIGEST_FROM_ACCOUNT`,
+`DIGEST_RECIPIENTS`, `DASHBOARD_URL`

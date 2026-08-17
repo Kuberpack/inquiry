@@ -1,0 +1,80 @@
+name: Daily Digest
+
+# Once a day, email a summary of overdue / due-soon / undated enquiries.
+# Entry point: backend/ingest/daily_digest.py (send_digest)
+
+on:
+  schedule:
+    # 09:00 IST = 03:30 UTC — adjust for your timezone if needed
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  daily-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Write Google OAuth credentials
+        working-directory: backend/ingest
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          GOOGLE_OAUTH_TOKENS_JSON: ${{ secrets.GOOGLE_OAUTH_TOKENS_JSON }}
+        run: |
+          if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+            echo "GOOGLE_CREDENTIALS_JSON secret is not set"
+            exit 1
+          fi
+          echo "$GOOGLE_CREDENTIALS_JSON" > credentials.json
+
+          if [ -z "$GOOGLE_OAUTH_TOKENS_JSON" ]; then
+            echo "GOOGLE_OAUTH_TOKENS_JSON secret is not set"
+            exit 1
+          fi
+          python3 << 'PYEOF'
+          import json, os, re, sys
+
+          raw = os.environ["GOOGLE_OAUTH_TOKENS_JSON"]
+          try:
+              tokens = json.loads(raw)
+          except json.JSONDecodeError as e:
+              print(f"GOOGLE_OAUTH_TOKENS_JSON must be valid JSON: {e}")
+              sys.exit(1)
+
+          if not isinstance(tokens, dict) or not tokens:
+              print("GOOGLE_OAUTH_TOKENS_JSON must be a non-empty JSON object")
+              sys.exit(1)
+
+          for account, token_data in tokens.items():
+              safe = re.sub(r"[^a-zA-Z0-9]+", "_", account)
+              path = f"token_{safe}.json"
+              with open(path, "w") as f:
+                  if isinstance(token_data, str):
+                      f.write(token_data)
+                  else:
+                      json.dump(token_data, f)
+              print(f"Wrote {path} for account {account}")
+          PYEOF
+
+      - name: Send daily digest
+        working-directory: backend/ingest
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DIGEST_FROM_ACCOUNT: ${{ vars.DIGEST_FROM_ACCOUNT }}
+          DIGEST_RECIPIENTS: ${{ vars.DIGEST_RECIPIENTS }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: python daily_digest.py
