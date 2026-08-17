@@ -39,23 +39,40 @@ Opens at `http://localhost:5173`.
 - "Notes & original message" expands to show the raw message text and a
   free-text notes field
 
-## 5. Deploying it for real use
+## 5. Deploying to Vercel
 
-Since it's a static site (no server-side code), the simplest path is:
+The project deploys to Vercel as a static Vite build, gated by HTTP Basic
+Auth (`middleware.js`) since there's no login screen. One-time setup:
 
-```bash
-npm run build
-```
+1. **Import the repo** — in the Vercel dashboard: Add New > Project > import
+   `Kuberpack/inquiry`.
+2. **Set the Root Directory** to `dashboard` (Project Settings > General —
+   or the "Root Directory" field shown during import). This is a monorepo;
+   Vercel needs to know the dashboard lives in a subfolder. Framework
+   Preset should auto-detect as **Vite**; build command `npm run build`,
+   output directory `dist` — leave these as the defaults.
+3. **Add environment variables** (Project Settings > Environment Variables,
+   applied to Production + Preview):
+   | Name | Value |
+   |---|---|
+   | `VITE_SUPABASE_URL` | your Supabase project URL |
+   | `VITE_SUPABASE_ANON_KEY` | the **publishable** key (never the secret key) |
+   | `BASIC_AUTH_USER` | a username for the access gate |
+   | `BASIC_AUTH_PASS` | a password for the access gate |
 
-This produces a `dist/` folder — upload its contents to the same VPS you're
-using for the backend (serve it via the same Nginx/Caddy you set up for the
-webhook, on a path like `dashboard.kuberpack.com`), or to a static host like
-Netlify/Vercel/Cloudflare Pages (all have generous free tiers for a
-single-page app like this).
+   `BASIC_AUTH_USER`/`BASIC_AUTH_PASS` are deliberately **not** prefixed
+   `VITE_` — that prefix tells Vite to inline a variable into the browser
+   bundle, which would leak these two. `middleware.js` reads them
+   server-side only, on Vercel's Edge Runtime, and returns `401` with a
+   `WWW-Authenticate` challenge for any request missing valid Basic Auth
+   credentials. It fails closed: if the env vars aren't set, every request
+   is rejected rather than served unprotected.
+4. **Deploy.** Vercel builds and gives you a `*.vercel.app` URL immediately;
+   attach a custom domain (e.g. `dashboard.kuberpack.com`) under Project
+   Settings > Domains once you're happy with it.
+5. Every push to `main` auto-deploys to Production; pushes to other
+   branches get their own preview URL (also gated by the same Basic Auth).
 
-**Security note:** there's no login screen. Since the publishable key only
-allows what the RLS policies permit (read + update on `enquiries`, nothing
-else), the real exposure is that anyone who finds the dashboard's URL can
-view and edit enquiry data. Fine for now while testing, but before sharing
-the live URL beyond yourself, put it behind something like Cloudflare
-Access, a VPN, or basic auth at the Nginx/Caddy level.
+The Basic Auth prompt is a stopgap, not a real access-control system —
+anyone with the shared credentials sees everything. If this grows beyond a
+couple of people, move to Cloudflare Access or a proper login instead.
