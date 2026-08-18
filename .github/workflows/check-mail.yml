@@ -78,4 +78,5 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GMAIL_ACCOUNTS: ${{ secrets.GMAIL_ACCOUNTS }}
           GMAIL_QUERY: ${{ vars.GMAIL_QUERY }}
+          GMAIL_QUERY_OVERRIDES: ${{ vars.GMAIL_QUERY_OVERRIDES }}
         run: python gmail_ingest.py
