@@ -45,12 +45,12 @@ CREDENTIALS_PATH = "credentials.json"
 # Comma-separated list of every Gmail address that receives enquiries,
 # e.g. GMAIL_ACCOUNTS=sales@kuberpack.com,info@kuberpack.com
 # Falls back to a single default account (token.json) if not set.
-GMAIL_ACCOUNTS = [a.strip() for a in os.environ.get("GMAIL_ACCOUNTS", "default").split(",") if a.strip()]
+GMAIL_ACCOUNTS = [a.strip() for a in (os.environ.get("GMAIL_ACCOUNTS") or "default").split(",") if a.strip()]
 
 # Only pull mail matching this Gmail search query — narrow it to the inbox
 # or label you actually want tracked (e.g. a label like "Enquiries"). This is
 # the default for every account that doesn't have its own override below.
-GMAIL_QUERY = os.environ.get("GMAIL_QUERY", "is:unread")
+GMAIL_QUERY = os.environ.get("GMAIL_QUERY") or "is:unread"
 
 # Per-account query overrides, for an inbox that's mixed personal + business
 # mail (rather than a dedicated business address). Set up a Gmail filter that
@@ -62,7 +62,7 @@ GMAIL_QUERY = os.environ.get("GMAIL_QUERY", "is:unread")
 # JSON object mapping account -> query string, e.g.:
 #   GMAIL_QUERY_OVERRIDES={"rahul@personal-domain.com": "label:Business is:unread"}
 try:
-    GMAIL_QUERY_OVERRIDES = json.loads(os.environ.get("GMAIL_QUERY_OVERRIDES", "{}"))
+    GMAIL_QUERY_OVERRIDES = json.loads(os.environ.get("GMAIL_QUERY_OVERRIDES") or "{}")
 except json.JSONDecodeError:
     GMAIL_QUERY_OVERRIDES = {}
 

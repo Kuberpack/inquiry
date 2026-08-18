@@ -19,7 +19,7 @@ client = Groq(api_key=os.environ["GROQ_API_KEY"])
 # code change — check https://console.groq.com/docs/models for currently
 # supported (Production-tier, not Preview) models and set GROQ_MODEL if this
 # default is ever retired too.
-MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+MODEL = os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b"
 
 EXTRACTION_PROMPT = """You are triaging an inbox for a corrugated packaging company, which
 receives a mix of genuine business messages (enquiries, orders, complaints, supplier/customer
