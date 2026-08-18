@@ -67,7 +67,7 @@ def extract_fields(message_text: str) -> dict:
 
     response = client.chat.completions.create(
         model=MODEL,
-        max_tokens=350,
+        max_tokens=1024,
         temperature=0,
         response_format={"type": "json_object"},  # Groq enforces valid JSON output with this
         messages=[{"role": "user", "content": prompt}],
