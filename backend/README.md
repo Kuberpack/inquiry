@@ -86,5 +86,10 @@ configure:
 **Secrets** (sensitive): `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_OAUTH_TOKENS_JSON`,
 `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GMAIL_ACCOUNTS`
 
-**Variables** (not sensitive): `GMAIL_QUERY`, `DIGEST_FROM_ACCOUNT`,
+**Variables** (not sensitive): `GMAIL_QUERY`, `GROQ_MODEL`, `DIGEST_FROM_ACCOUNT`,
 `DIGEST_RECIPIENTS`, `DASHBOARD_URL`
+
+If `check-mail` starts failing with a Groq `model_not_found` (404) error,
+Groq has retired the model `extraction.py` defaults to. Check
+https://console.groq.com/docs/models for a currently supported model ID
+and set it as the `GROQ_MODEL` repo variable — no code change needed.

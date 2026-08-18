@@ -11,7 +11,12 @@ from groq import Groq
 
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
-MODEL = "llama-3.3-70b-versatile"  # good balance of quality/speed on Groq's free tier
+# Groq periodically retires model IDs (this pipeline broke in production when
+# "llama-3.3-70b-versatile" stopped being accessible — a 404 model_not_found).
+# Configurable so a future retirement is a config change, not a code change:
+# check https://console.groq.com/docs/models for currently supported models
+# and set GROQ_MODEL if the default below is ever retired too.
+MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 EXTRACTION_PROMPT = """You are extracting structured data from a business enquiry message
 received by a corrugated packaging company. Read the message below and return ONLY a JSON
