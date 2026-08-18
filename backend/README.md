@@ -1,7 +1,9 @@
 # Unified enquiry backend — Gmail + WhatsApp ingestion
 
 Gets messages from Gmail (and later WhatsApp) into one `enquiries` table,
-with category/deadline/priority extracted automatically by Groq (Llama 3.3).
+with category/deadline/priority extracted automatically via Groq (model
+configurable — see `GROQ_MODEL` below, since Groq periodically retires
+model IDs).
 
 ## 1. Set up Supabase (database)
 

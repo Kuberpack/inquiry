@@ -12,11 +12,14 @@ from groq import Groq
 client = Groq(api_key=os.environ["GROQ_API_KEY"])
 
 # Groq periodically retires model IDs (this pipeline broke in production when
-# "llama-3.3-70b-versatile" stopped being accessible — a 404 model_not_found).
-# Configurable so a future retirement is a config change, not a code change:
-# check https://console.groq.com/docs/models for currently supported models
-# and set GROQ_MODEL if the default below is ever retired too.
-MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+# "llama-3.3-70b-versatile" was retired — a 404 model_not_found; as of writing
+# Groq's production lineup for general chat/extraction has moved to OpenAI's
+# GPT-OSS models, gpt-oss-120b being the closest equivalent to the old
+# flagship). Configurable so the next retirement is a config change, not a
+# code change — check https://console.groq.com/docs/models for currently
+# supported (Production-tier, not Preview) models and set GROQ_MODEL if this
+# default is ever retired too.
+MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 EXTRACTION_PROMPT = """You are extracting structured data from a business enquiry message
 received by a corrugated packaging company. Read the message below and return ONLY a JSON
