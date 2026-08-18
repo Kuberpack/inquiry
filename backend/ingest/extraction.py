@@ -65,21 +65,23 @@ def extract_fields(message_text: str) -> dict:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     prompt = EXTRACTION_PROMPT.format(today=today, message_text=message_text)
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=1024,
-        temperature=0,
-        response_format={"type": "json_object"},  # Groq enforces valid JSON output with this
-        messages=[{"role": "user", "content": prompt}],
-    )
-
-    raw = response.choices[0].message.content.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-
     try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=1024,
+            temperature=0,
+            response_format={"type": "json_object"},  # Groq enforces valid JSON output with this
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+
         data = json.loads(raw)
-    except json.JSONDecodeError:
-        # Fail safe: flag for manual review rather than silently dropping the message
+    except Exception as exc:
+        # Fail safe: flag for manual review rather than crashing the whole ingestion
+        # run over one bad message (Groq API errors and JSON parse failures alike)
+        print(f"extract_fields failed for {message_text[:120]!r}: {exc}")
         data = {
             "is_business_relevant": True,
             "category": "other",
