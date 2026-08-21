@@ -87,9 +87,16 @@ create unique index if not exists idx_npd_updates_source_message_id
 -- Used instead of pulling every lead into Python and diffing strings in
 -- a loop, so matching stays fast as the lead count grows. The `%`
 -- operator (rather than a bare similarity() > threshold predicate) is
--- what lets Postgres use idx_npd_leads_party_name_trgm; set_limit()
--- makes that operator honor match_threshold for this call instead of
--- the session-wide pg_trgm.similarity_threshold default (0.3).
+-- what lets Postgres use idx_npd_leads_party_name_trgm; setting
+-- pg_trgm.similarity_threshold makes that operator honor match_threshold
+-- for this call instead of the default (0.3). Uses set_config(..., true)
+-- rather than pg_trgm's own set_limit() because set_limit() changes the
+-- setting for the whole session — on a pooled connection (PgBouncer/
+-- Supavisor, which Supabase sits behind) that session outlives this
+-- function call, so it would leak match_threshold into whatever
+-- unrelated request happens to reuse the same pooled connection next.
+-- set_config's third argument (is_local = true) scopes the change to
+-- the current transaction only; it's reverted automatically on commit.
 create or replace function match_npd_leads(
     search_name text,
     match_threshold real default 0.35,
@@ -99,7 +106,7 @@ returns table (id uuid, party_name text, stage text, similarity real)
 language plpgsql
 as $$
 begin
-    perform set_limit(match_threshold);
+    perform set_config('pg_trgm.similarity_threshold', match_threshold::text, true);
     return query
         select l.id, l.party_name, l.stage, similarity(l.party_name, search_name) as similarity
         from npd_leads l
