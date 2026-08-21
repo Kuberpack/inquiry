@@ -13,6 +13,7 @@ extraction.py, GROQ_API_KEY) even though neither is otherwise used here.
 """
 
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -74,7 +75,16 @@ def send_reminders() -> None:
         print("INTERNAL_TEAM_NUMBERS is not set — nothing to send to.")
         return
 
-    stale_leads = find_stale_leads()
+    try:
+        stale_leads = find_stale_leads()
+    except Exception as exc:
+        # Not "swallow and continue" like the per-row/per-send handling below —
+        # a failed fetch means there's genuinely nothing to report. Fail loud
+        # with a clear message and a non-zero exit (so cron logs/alerts catch
+        # it) instead of a bare traceback being the only signal.
+        print(f"npd_reminders run failed: {exc}")
+        sys.exit(1)
+
     if not stale_leads:
         # No "all clear" message: this runs daily and silence already means
         # "nothing stale" — a confirmation every single day is noise, not
