@@ -85,10 +85,18 @@ ngrok for testing).
 server won't start without it) — set it to the `phone_number_id` Meta
 reports in each payload's `entry[0].changes[0].value.metadata` for the
 dedicated NPD WhatsApp Business number. Messages arriving on that number
-are routed to `handle_npd_message()` (stubbed pending the `npd_leads`/
-`npd_updates` tables in `backend/npd-schema.sql`) instead of the
-customer-enquiry pipeline; everything else keeps going to `enquiries`
-exactly as before.
+are routed to `handle_npd_message()`, which extracts a structured update
+via Groq, fuzzy-matches the party against `npd_leads`, writes
+`npd_updates`, and replies on WhatsApp confirming what was logged (or
+asking the sender to clarify, or flagging the message for manual review
+— see `schema.md`/`archi.md`). This requires `backend/npd-schema.sql`
+(still a draft, pending sign-off) to actually be applied to Supabase
+first.
+
+Set `WHATSAPP_ACCESS_TOKEN` (a Meta Graph API system-user token) to let
+the webhook send those replies — without it, replies are just printed to
+the log instead of sent, everything else still works. `WHATSAPP_API_VERSION`
+optionally overrides the Graph API version if Meta retires the default.
 
 ## 7. Daily digest (reminder emails)
 
