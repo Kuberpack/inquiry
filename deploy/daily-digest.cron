@@ -1,0 +1,17 @@
+# Kuberpack — daily enquiry digest email at 09:00 IST / 03:30 UTC
+# (replaces .github/workflows/daily-digest.yml).
+#
+# This is an /etc/cron.d fragment (includes the user field), not a
+# `crontab -e` file. Install:
+#   sudo cp deploy/daily-digest.cron /etc/cron.d/kuberpack-daily-digest
+#   sudo chown root:root /etc/cron.d/kuberpack-daily-digest
+#   sudo chmod 644 /etc/cron.d/kuberpack-daily-digest
+#
+# daily_digest.py imports gmail_ingest.py, which imports extraction.py,
+# which reads GROQ_API_KEY at import time — so this job needs the same
+# full env as gmail-ingest.cron, not just the Supabase/digest vars, even
+# though it doesn't call Groq directly. It also reuses gmail_ingest's
+# get_gmail_service(), so it needs the same credentials.json /
+# token_<account>.json in backend/ingest/ as the gmail-ingest job.
+
+30 3 * * * kuberpack cd /opt/kuberpack/inquiry/backend/ingest && set -a && . /etc/kuberpack/.env && set +a && /opt/kuberpack/inquiry/backend/venv/bin/python3 daily_digest.py >> /var/log/kuberpack/daily-digest.log 2>&1

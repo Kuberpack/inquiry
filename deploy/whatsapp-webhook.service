@@ -1,0 +1,31 @@
+# Kuberpack WhatsApp webhook — FastAPI app served by uvicorn.
+#
+# Install: sudo cp deploy/whatsapp-webhook.service /etc/systemd/system/
+#          sudo systemctl daemon-reload
+#          sudo systemctl enable --now whatsapp-webhook
+#
+# See deploy/README.md for the full setup (venv, /etc/kuberpack/.env, nginx).
+
+[Unit]
+Description=Kuberpack WhatsApp ingestion webhook
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kuberpack
+Group=kuberpack
+WorkingDirectory=/opt/kuberpack/inquiry/backend/ingest
+EnvironmentFile=/etc/kuberpack/.env
+# Bind to loopback only — nginx (deploy/nginx.conf) reverse-proxies
+# api.kuberpack.com to this port, so it never needs to face the internet
+# directly (the module's own docstring says --host 0.0.0.0, which is only
+# right if you're skipping the reverse proxy).
+ExecStart=/opt/kuberpack/inquiry/backend/venv/bin/uvicorn whatsapp_webhook:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
