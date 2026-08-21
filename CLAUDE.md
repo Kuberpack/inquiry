@@ -64,8 +64,13 @@ dashboard/
   React/CSS/Python deliberately.
 - **Ask before schema changes.** Any change to Supabase tables/columns
   needs explicit sign-off before writing SQL — this has been a standing
-  rule since the Sales module discussion. Additive changes (new column,
-  new table) still need to be flagged, even if low-risk.
+  rule since the Sales module discussion. Print the SQL, explain what it
+  does, and stop for sign-off; additive changes (new column, new table)
+  still need to be flagged, even if low-risk.
+- **Design for 10-100x today's data volume.** No unbounded `SELECT *`,
+  no per-row loop that should be a single query, and an index on
+  anything a query filters, joins, or sorts by — enquiry and sales data
+  are expected to grow well past current volume.
 - **Fail open, not silent.** When an LLM call or parse can fail, default
   to the safer outcome that surfaces the item for manual review rather
   than silently dropping it (see `extraction.py`'s fail-safe JSON parse
@@ -104,6 +109,25 @@ dashboard/
 - If a PR conflicts with `main` because a more urgent fix landed first,
   merge `main` into the branch and resolve conflicts before merging —
   don't force through with `--force` or discard either side blindly.
+
+## Working practices
+
+How a task/phase gets carried out, distinct from code style:
+
+- **Flag adjacent improvements, don't silently expand scope.** If a
+  small, low-risk, high-leverage fix sits right next to what's already
+  being touched (a missing index, an obvious bug, a guard against a
+  scaling issue), make it and say what was added and why. A genuinely
+  different feature still needs to be flagged before starting it, not
+  folded in unannounced.
+- **Re-verify against the spec before calling something done.** Before
+  reporting a phase or task complete, re-read the original ask top to
+  bottom, check each requirement against what was actually built, fix
+  any gap, and state which requirements were verified and how — not
+  just "looks good."
+- **Update `todo.md` at the end of every phase.** Move shipped items to
+  checked, and note what's next, so the next session — human or Claude —
+  picks up from an accurate list.
 
 ## Known non-obvious constraints
 

@@ -3,6 +3,15 @@
 Tasks and features discussed but not yet done, as of the last session.
 Checked items are shipped and merged to `main`; unchecked items are open.
 
+## Process
+
+- [x] Codify standing working-practice rules into `CLAUDE.md` (flag
+      adjacent improvements instead of silent scope creep, always stop
+      for sign-off on schema changes, design new tables/queries for
+      10-100x today's volume, re-verify against the spec before
+      declaring a phase done, update `todo.md` at the end of every
+      phase) — see the new "Working practices" section.
+
 ## Infra / deployment
 
 - [x] `deploy/` directory: systemd unit for `whatsapp_webhook.py`, cron
