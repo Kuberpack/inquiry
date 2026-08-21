@@ -188,3 +188,66 @@ Per the comment block at the top of `sales-schema.sql`: no
 inventory/stock tables, no GSTIN-verification data, no amendment/revision
 history tables, no bulk-upload staging tables, no RCM or non-taxable
 extra-charge line types. Add only if actually needed later.
+
+---
+
+## NPD module
+
+Added by `backend/npd-schema.sql` (**draft — not yet applied to
+Supabase**, pending sign-off). Purely additive — doesn't modify
+`enquiries` or the Sales module tables. Tracks New Product Development
+leads and the WhatsApp/manual updates logged against them.
+
+### `npd_leads`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `party_name` | `text` | not null |
+| `contact_person` | `text` | |
+| `contact_phone` | `text` | |
+| `stage` | `text` | not null, default `'New Lead'` — see stage list below |
+| `potential_volume` | `text` | |
+| `created_at` / `updated_at` | `timestamptz` | `updated_at` auto-updated by trigger |
+
+Indexes: `(stage)`, plus a `pg_trgm` GIN trigram index on `party_name` for
+fuzzy-matching an inbound message's party name against existing leads at
+any table size, without a Python-side scan.
+
+**`stage` values — single source of truth.** Enforced by a `check`
+constraint on `npd_leads.stage`. Phase 3 (Groq extraction's
+`stage_guess`) and Phase 6 (dashboard Kanban columns) both reuse this
+exact list — pull from here, don't redefine it elsewhere, so the DB
+constraint, the LLM prompt, and the UI can't drift apart:
+
+1. `New Lead`
+2. `In Progress (Samples/Rates)`
+3. `Awaiting Response`
+4. `Rate Negotiation`
+5. `On Hold`
+6. `Active/Won`
+7. `Rate Mismatch (Lost)`
+
+### `npd_updates`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `lead_id` | `uuid` | FK → `npd_leads(id)`, `on delete cascade`, not null |
+| `update_text` | `text` | not null |
+| `update_date` | `timestamptz` | not null, default `now()` |
+| `next_follow_up` | `date` | nullable |
+| `source` | `text` | not null, `'whatsapp_text'` \| `'whatsapp_voice'` \| `'manual'`, no default (always set explicitly, same as `enquiries.source`) |
+| `source_message_id` | `text` | nullable — WhatsApp message id, for de-dup |
+| `raw_transcript` | `text` | nullable — original Whisper-style transcript, only set for `'whatsapp_voice'` |
+| `created_at` | `timestamptz` | default `now()` |
+
+**Constraints**: partial `unique (source_message_id) where
+source_message_id is not null` — dedups webhook retries the same way
+`enquiries` does, without blocking manual entries that have no source
+message.
+
+Indexes: `(lead_id)`, `(update_date)`.
+
+**Realtime**: `npd_leads` and `npd_updates` are both added to the
+`supabase_realtime` publication.

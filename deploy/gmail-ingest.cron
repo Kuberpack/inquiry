@@ -1,0 +1,14 @@
+# Kuberpack — poll Gmail every 15 minutes (replaces .github/workflows/check-mail.yml).
+#
+# This is an /etc/cron.d fragment (includes the user field), not a
+# `crontab -e` file. Install:
+#   sudo cp deploy/gmail-ingest.cron /etc/cron.d/kuberpack-gmail-ingest
+#   sudo chown root:root /etc/cron.d/kuberpack-gmail-ingest
+#   sudo chmod 644 /etc/cron.d/kuberpack-gmail-ingest
+#
+# credentials.json and token_<account>.json must already exist in
+# backend/ingest/ (this job's working directory) — see deploy/README.md.
+# /etc/kuberpack/.env is sourced directly (not via python-dotenv) so this
+# also has to be readable by the `kuberpack` user, not just root.
+
+*/15 * * * * kuberpack cd /opt/kuberpack/inquiry/backend/ingest && set -a && . /etc/kuberpack/.env && set +a && /opt/kuberpack/inquiry/backend/venv/bin/python3 gmail_ingest.py >> /var/log/kuberpack/gmail-ingest.log 2>&1

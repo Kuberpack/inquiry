@@ -81,6 +81,15 @@ the same `WHATSAPP_VERIFY_TOKEN` you set in `.env`. You'll need this
 running behind a public HTTPS URL (a reverse proxy or a tunnel like
 ngrok for testing).
 
+`NPD_PHONE_NUMBER_ID` is **required** (read at import time, so the
+server won't start without it) — set it to the `phone_number_id` Meta
+reports in each payload's `entry[0].changes[0].value.metadata` for the
+dedicated NPD WhatsApp Business number. Messages arriving on that number
+are routed to `handle_npd_message()` (stubbed pending the `npd_leads`/
+`npd_updates` tables in `backend/npd-schema.sql`) instead of the
+customer-enquiry pipeline; everything else keeps going to `enquiries`
+exactly as before.
+
 ## 7. Daily digest (reminder emails)
 
 `ingest/daily_digest.py` sends one email a day (see
