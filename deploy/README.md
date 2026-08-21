@@ -113,6 +113,8 @@ GMAIL_QUERY=is:unread
 GMAIL_QUERY_OVERRIDES=
 WHATSAPP_VERIFY_TOKEN=
 NPD_PHONE_NUMBER_ID=
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_API_VERSION=
 DIGEST_FROM_ACCOUNT=
 DIGEST_RECIPIENTS=
 DASHBOARD_URL=
@@ -130,6 +132,10 @@ it `daily_digest.py` crashes with a `KeyError` before it does anything.
 Likewise `NPD_PHONE_NUMBER_ID` is read at import time in
 `whatsapp_webhook.py` — the service won't start without it, even before
 the NPD WhatsApp number is actually provisioned with Meta.
+`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_API_VERSION` are optional, read at
+call time, not import time — leave them blank and the service still
+starts and ingests NPD messages, it just logs confirmation/clarification
+replies instead of sending them on WhatsApp.
 
 **Quoting note (why this needs Ubuntu 22.04+):** if you set
 `GMAIL_QUERY_OVERRIDES` (only needed for a mixed personal/business

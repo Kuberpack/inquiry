@@ -32,76 +32,85 @@ def upsert_enquiry(record: dict) -> None:
     ).execute()
 
 
-def _find_or_create_npd_lead(
-    party_name: str, stage_guess: str | None, contact_person: str | None, potential_volume: str | None
-) -> dict:
+def get_npd_update_by_message_id(source_message_id: str) -> dict | None:
+    """
+    Looks up an existing npd_updates row by source_message_id (indexed —
+    see idx_npd_updates_source_message_id). Used to dedup WhatsApp
+    webhook retries *before* doing any Groq/matching work, so a retry
+    can't create a second npd_leads row or send a second confirmation.
+    """
     client = get_client()
-
-    exact = (
-        client.table("npd_leads")
-        .select("id,party_name,stage")
-        .ilike("party_name", party_name)
+    response = (
+        client.table("npd_updates")
+        .select("id, lead_id")
+        .eq("source_message_id", source_message_id)
         .limit(1)
         .execute()
     )
-    if exact.data:
-        return exact.data[0]
-
-    # party_name gets a GIN trigram index specifically so this can be an ILIKE
-    # index scan instead of pulling every lead into Python to diff strings —
-    # see idx_npd_leads_party_name_trgm in npd-schema.sql. This only catches
-    # same-substring variants, not typo/phonetic ones (that needs a
-    # similarity()-based RPC, not exposed by supabase-py's filter API — revisit
-    # if substring matching proves too weak in practice). Guarded to names of
-    # at least 4 chars so a short/garbled guess doesn't wildcard-match everything.
-    if len(party_name) >= 4:
-        fuzzy = (
-            client.table("npd_leads")
-            .select("id,party_name,stage")
-            .ilike("party_name", f"%{party_name}%")
-            .limit(1)
-            .execute()
-        )
-        if fuzzy.data:
-            return fuzzy.data[0]
-
-    created = (
-        client.table("npd_leads")
-        .insert(
-            {
-                "party_name": party_name,
-                "stage": stage_guess or "New Lead",
-                "contact_person": contact_person,
-                "potential_volume": potential_volume,
-            }
-        )
-        .execute()
-    )
-    return created.data[0]
+    return response.data[0] if response.data else None
 
 
-def upsert_npd_update(
-    party_name: str,
-    stage_guess: str | None,
-    contact_person: str | None,
-    potential_volume: str | None,
-    update: dict,
-) -> None:
+def find_matching_npd_leads(party_name: str, threshold: float = 0.35, limit: int = 5) -> list[dict]:
     """
-    Matches (or creates) the npd_leads row this update is about, inserts the
-    npd_updates row against it (skipping if source_message_id was already
-    ingested, same dedup pattern as upsert_enquiry), and advances the lead's
-    stage if the extraction confidently guessed a new one.
+    Fuzzy-matches party_name against npd_leads.party_name via the
+    match_npd_leads() Postgres function (pg_trgm, GIN-indexed) — a single
+    DB round trip regardless of how many leads exist, rather than
+    pulling every lead into Python and diffing strings in a loop.
     """
-    lead = _find_or_create_npd_lead(party_name, stage_guess, contact_person, potential_volume)
-
     client = get_client()
-    update["lead_id"] = lead["id"]
-    client.table("npd_updates").upsert(
-        update,
-        on_conflict="source_message_id",
-        ignore_duplicates=True,
+    response = client.rpc(
+        "match_npd_leads",
+        {"search_name": party_name, "match_threshold": threshold, "match_count": limit},
     ).execute()
+    return response.data or []
 
-    if stage_guess and stage_guess != lead["stage"]:
-        client.table("npd_leads").update({"stage": stage_guess}).eq("id", lead["id"]).execute()
+
+def create_npd_lead(party_name: str, stage: str | None = None) -> dict:
+    client = get_client()
+    record = {"party_name": party_name}
+    if stage:
+        record["stage"] = stage
+    response = client.table("npd_leads").insert(record).execute()
+    return response.data[0]
+
+
+def update_npd_lead_stage(lead_id: str, stage: str) -> None:
+    client = get_client()
+    client.table("npd_leads").update({"stage": stage}).eq("id", lead_id).execute()
+
+
+def insert_npd_update(record: dict) -> dict:
+    """
+    Plain insert, not upsert — idx_npd_updates_source_message_id is a
+    partial unique index (see npd-schema.sql), and PostgREST's
+    upsert(on_conflict=...) can't target a partial index, so it would
+    400 here. Callers are expected to have already deduped via
+    get_npd_update_by_message_id() before calling this.
+    """
+    client = get_client()
+    response = client.table("npd_updates").insert(record).execute()
+    return response.data[0]
+
+
+def flag_npd_update_for_review(reason: str, raw_text: str, source_message_id: str,
+                                next_follow_up: str | None = None,
+                                source: str = "whatsapp_text",
+                                raw_transcript: str | None = None) -> dict:
+    """
+    Records a WhatsApp NPD message that couldn't be confidently linked to
+    a lead (no party name extracted, an ambiguous match, an over-limit
+    voice note, or a processing error) — lead_id left null, needs_review=
+    true — instead of losing it. source/raw_transcript let a skipped
+    whatsapp_voice message keep its transcript for audit, same as a
+    successfully-linked one would via insert_npd_update().
+    """
+    record = {
+        "lead_id": None,
+        "update_text": f"[NEEDS REVIEW: {reason}] {raw_text[:2000]}",
+        "next_follow_up": next_follow_up,
+        "source": source,
+        "source_message_id": source_message_id,
+        "raw_transcript": raw_transcript,
+        "needs_review": True,
+    }
+    return insert_npd_update(record)

@@ -81,25 +81,33 @@ the same `WHATSAPP_VERIFY_TOKEN` you set in `.env`. You'll need this
 running behind a public HTTPS URL (a reverse proxy or a tunnel like
 ngrok for testing).
 
-`NPD_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` are **required** (read
-at import time, so the server won't start without them) — set
-`NPD_PHONE_NUMBER_ID` to the `phone_number_id` Meta reports in each
-payload's `entry[0].changes[0].value.metadata` for the dedicated NPD
-WhatsApp Business number, and `WHATSAPP_ACCESS_TOKEN` to a Graph API
-access token (System User token, not the 24h temporary one from the
-dashboard). Messages arriving on that number are routed to
-`handle_npd_message()`, which extracts fields via Groq
-(`extract_npd_update()`) and upserts into `npd_leads`/`npd_updates` (see
-`backend/npd-schema.sql`); everything else keeps going to `enquiries`
-exactly as before.
+`NPD_PHONE_NUMBER_ID` is **required** (read at import time, so the
+server won't start without it) — set it to the `phone_number_id` Meta
+reports in each payload's `entry[0].changes[0].value.metadata` for the
+dedicated NPD WhatsApp Business number. Messages arriving on that number
+are routed to `handle_npd_message()`, which extracts a structured update
+via Groq, fuzzy-matches the party against `npd_leads`, writes
+`npd_updates`, and replies on WhatsApp confirming what was logged (or
+asking the sender to clarify, or flagging the message for manual review
+— see `schema.md`/`archi.md`). This requires `backend/npd-schema.sql`
+(still a draft, pending sign-off) to actually be applied to Supabase
+first.
+
+Set `WHATSAPP_ACCESS_TOKEN` (a Meta Graph API system-user token) to let
+the webhook send those replies and download NPD voice note media —
+without it, replies are just printed to the log instead of sent, and
+voice notes are flagged for manual review instead of transcribed; typed
+text still works either way. `WHATSAPP_API_VERSION` optionally overrides
+the Graph API version if Meta retires the default.
 
 Voice notes on the NPD line (`type: "audio"`) are downloaded via the Meta
 Graph API media endpoint and transcribed with Groq's Whisper endpoint
-before going through the same `extract_npd_update()` path as typed text
-— the transcript is stored on `npd_updates.raw_transcript` so a
-mis-transcription is auditable later. A voice note over ~2 minutes or
-over a sane file-size limit is skipped (not silently dropped): the
-sender gets a WhatsApp reply explaining why, and the reason is logged.
+(`GROQ_WHISPER_MODEL` optionally overrides the default model) before
+going through the same `extract_npd_update()`/fuzzy-matching path as
+typed text — the transcript is stored on `npd_updates.raw_transcript` so
+a mis-transcription is auditable later. A voice note over ~2 minutes or
+over a sane file-size limit is flagged for manual review rather than
+silently dropped: the sender gets a WhatsApp reply explaining why.
 
 ## 7. Daily digest (reminder emails)
 

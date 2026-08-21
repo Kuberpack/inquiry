@@ -82,37 +82,65 @@ Supabase yet.
 - [x] `whatsapp_webhook.py` routes by `metadata.phone_number_id`:
       `NPD_PHONE_NUMBER_ID` (required env var) → `handle_npd_message()`,
       everything else → the unchanged customer-enquiry path.
-- [ ] Run `backend/npd-schema.sql` against the live Supabase project
-      (still just a draft file — needs to actually be executed).
-- [ ] Set `NPD_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` in
-      `/etc/kuberpack/.env` (and any other deployment env) once the NPD
-      WhatsApp Business number is provisioned with Meta — the webhook
-      won't start without them.
-- [x] Phase 3: Groq extraction for NPD messages — `extract_npd_update()`
-      in `extraction.py` returns `party_name`/`stage_guess`/`update_text`/
-      `next_follow_up`/`potential_volume`/`contact_person` from either a
-      typed message or a voice transcript. Party matching against
-      `npd_leads` is done via `ILIKE` (exact, then substring) in
-      `db._find_or_create_npd_lead()` — the `party_name` trigram index
-      speeds up the `ILIKE` scan, but this isn't true typo-tolerant
-      `similarity()` fuzzy matching (that needs a Postgres RPC function,
-      which is a schema change and wasn't added — revisit if `ILIKE`
-      substring matching proves too weak once there's real traffic).
+- [x] Phase 3: Groq extraction for NPD text messages
+      (`extract_npd_update()` — `party_name`, `update_summary`,
+      `stage_guess` constrained to the `schema.md` stage list,
+      `next_follow_up_date`), DB-side fuzzy party matching against
+      `npd_leads` via a `match_npd_leads()` Postgres function (pg_trgm
+      `%` operator + `idx_npd_leads_party_name_trgm`, not a Python loop),
+      linking to a single clear match / creating a new lead / asking the
+      sender to disambiguate on multiple close matches, writing
+      `npd_updates`, and a WhatsApp confirmation/clarification/
+      needs-review reply via `send_whatsapp_message()` (Meta Graph API —
+      needs `WHATSAPP_ACCESS_TOKEN`, optional; replies are just logged
+      without it). Verified end-to-end (mocked Groq + DB) for: a brand
+      new party, a party name close to an existing lead, two
+      similarly-named existing parties (asks to disambiguate, writes no
+      update), a Groq timeout, a Meta webhook retry of the same message
+      (no duplicate lead/update/reply), and a total DB outage (no crash,
+      sender still told it needs manual review) — none silently drop the
+      message. Required an additive schema change (applied to the
+      still-unapplied `backend/npd-schema.sql`, pending sign-off):
+      `npd_updates.lead_id` made nullable + a new `needs_review boolean`
+      column (so a message that can't be confidently linked — no party
+      name, ambiguous match, unsupported message type, or a Groq/DB
+      error — can still be stored instead of dropped) plus a partial
+      index on `needs_review`, and the `match_npd_leads()` function. See
+      `schema.md` for the exact SQL.
 - [x] Voice transcription for `whatsapp_voice` updates — `handle_npd_message()`
       detects `type: "audio"`, downloads the media via the Meta Graph API
-      (`WHATSAPP_ACCESS_TOKEN`, new required env var), transcribes with
-      Groq Whisper (`GROQ_WHISPER_MODEL`, configurable), and feeds the
-      transcript into the same `extract_npd_update()` path as typed text.
-      Transcript is stored on `npd_updates.raw_transcript` for audit.
-      Guardrails: audio over ~2 minutes (checked post-transcription, since
-      neither the webhook payload nor the Graph API media metadata expose
-      duration) or over 8MB (checked pre-download) is skipped, logged, and
-      replied to the sender explaining why — never silently dropped.
-      Verified end-to-end (media download → transcription → extraction →
-      DB upsert, and both guardrails) against a real short audio file with
-      only the Meta/Groq/Supabase network calls mocked — see PR description.
+      (reuses `WHATSAPP_ACCESS_TOKEN`), transcribes with Groq Whisper
+      (`GROQ_WHISPER_MODEL`, configurable), and feeds the transcript into
+      the same `extract_npd_update()`/`match_npd_leads()` path as typed
+      text via a shared `_process_npd_text()` helper — no duplicated
+      extraction/matching logic between the two sources. Transcript is
+      stored on `npd_updates.raw_transcript` for audit. Guardrails: audio
+      over ~2 minutes (checked post-transcription, since neither the
+      webhook payload nor the Graph API media metadata expose duration)
+      or over 8MB (checked pre-download) is flagged via
+      `flag_npd_update_for_review()` (extended with `source`/
+      `raw_transcript` params so a skipped voice note keeps its
+      transcript for audit too) and replied to the sender explaining why
+      — never silently dropped. Without `WHATSAPP_ACCESS_TOKEN` set,
+      voice notes are flagged for manual review instead of transcribed
+      (can't download media without it), same degrade-gracefully
+      approach as text replies. Verified end-to-end (media download →
+      transcription → extraction → matching → DB insert, and both
+      guardrails) against a real short audio file with only the
+      Meta/Groq/Supabase network calls mocked — see PR description.
+- [ ] Run `backend/npd-schema.sql` against the live Supabase project,
+      **including the Phase 3 amendments above** — still just a draft
+      file, needs sign-off and to actually be executed.
+- [ ] Set `NPD_PHONE_NUMBER_ID` in `/etc/kuberpack/.env` (and any other
+      deployment env) once the NPD WhatsApp Business number is
+      provisioned with Meta — the webhook won't start without it.
+- [ ] Set `WHATSAPP_ACCESS_TOKEN` (Meta Graph API system-user token) once
+      available, so NPD WhatsApp replies actually send and voice notes
+      actually transcribe instead of being flagged for manual review.
 - [ ] Phase 6: dashboard NPD Kanban view, columns driven by the same
-      `schema.md` stage list.
+      `schema.md` stage list, plus a "needs review" queue surfacing
+      `npd_updates` rows where `needs_review` is true so someone can
+      manually link/correct them.
 
 ## Frontend / dashboard
 

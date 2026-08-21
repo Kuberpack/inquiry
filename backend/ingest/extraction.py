@@ -97,10 +97,9 @@ def extract_fields(message_text: str) -> dict:
     return data
 
 
-# Single source of truth is the `check` constraint on npd_leads.stage in
-# backend/npd-schema.sql (documented in schema.md). Mirrored here because a
-# Postgres check constraint isn't queryable at runtime without another round
-# trip — keep this list in sync if the constraint ever changes.
+# Single source of truth is schema.md's "stage values" table, which mirrors
+# the `npd_leads.stage` check constraint in npd-schema.sql — Phase 6's
+# dashboard Kanban columns reuse this same list, so keep them in sync.
 NPD_STAGES = [
     "New Lead",
     "In Progress (Samples/Rates)",
@@ -111,24 +110,23 @@ NPD_STAGES = [
     "Rate Mismatch (Lost)",
 ]
 
-NPD_EXTRACTION_PROMPT = """You are logging an update on a New Product Development (NPD) lead for a
-corrugated packaging company, from a WhatsApp message sent by a salesperson in the field (typed, or
-transcribed from a voice note — expect some transcription noise). Read the message below and return
-ONLY a JSON object (no markdown fences, no preamble, no explanation) with these exact fields:
+NPD_EXTRACTION_PROMPT = """You are logging a WhatsApp update into a New Product Development (NPD)
+leads pipeline for a corrugated packaging company. Each message is an update from a salesperson
+about a prospective customer/party they are developing as a lead — typed, or transcribed from a
+voice note (expect some transcription noise in that case). Read the message below and return ONLY
+a JSON object (no markdown fences, no preamble, no explanation) with these exact fields:
 
 {{
-  "party_name": the name of the company/party this update is about, best guess even if it's only a
-                partial or informal name (e.g. "Sharma Traders"). If genuinely no party is
-                identifiable, use "Unknown — needs review",
-  "contact_person": the name of a specific contact person mentioned, otherwise null,
-  "update_text": a one-sentence summary of what happened or was discussed, written in third person
-                 (e.g. "Quoted samples of 5-ply boxes, awaiting their feedback."),
-  "stage_guess": one of {stages} if the message clearly implies the lead has moved to that pipeline
-                 stage, otherwise null (null means "leave the existing stage alone"),
-  "next_follow_up": an ISO 8601 date (YYYY-MM-DD) if the message states or clearly implies when to
-                     follow up next, otherwise null,
-  "potential_volume": a rough volume/quantity mentioned for this lead (e.g. "5000 boxes/month"),
-                       otherwise null
+  "party_name": the name of the customer/prospect company (or contact) this update is about, as
+                written in the message — or null if the message doesn't clearly name a party,
+  "update_summary": a one-sentence, past-tense summary of what happened or was communicated,
+                    suitable to log against the lead (e.g. "Samples submitted, awaiting
+                    feedback"),
+  "stage_guess": your best guess at which pipeline stage this update implies the lead is now at,
+                 one of exactly these values: {stages} — or null if the message doesn't give
+                 enough signal to guess a stage,
+  "next_follow_up_date": an ISO 8601 date (YYYY-MM-DD) if the message states or clearly implies
+                         a next follow-up date, otherwise null
 }}
 
 Today's date is {today}.
@@ -143,14 +141,15 @@ Return only the JSON object.
 
 
 def extract_npd_update(message_text: str) -> dict:
-    """
-    Groq call turning a raw NPD WhatsApp message into structured fields for npd_leads/npd_updates.
-    Shared by both whatsapp_text and whatsapp_voice sources in whatsapp_webhook.py — the caller
-    just picks which text (typed body or transcript) to feed in, so this logic exists once.
-    """
+    """Call Groq to turn a raw NPD WhatsApp message into {party_name, update_summary,
+    stage_guess, next_follow_up_date}. Same fail-open pattern as extract_fields(): on any
+    Groq/parse error, return party_name=None (handle_npd_message treats that as "can't
+    auto-link, flag for manual review") rather than crashing or guessing a party. Shared by
+    both whatsapp_text and whatsapp_voice sources in whatsapp_webhook.py — the caller just
+    picks which text (typed body or transcript) to feed in, so this logic exists once."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     prompt = NPD_EXTRACTION_PROMPT.format(
-        stages=json.dumps(NPD_STAGES), today=today, message_text=message_text
+        today=today, message_text=message_text, stages=", ".join(NPD_STAGES)
     )
 
     try:
@@ -164,27 +163,20 @@ def extract_npd_update(message_text: str) -> dict:
 
         raw = response.choices[0].message.content.strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
-        data = json.loads(raw)
 
-        if data.get("stage_guess") not in NPD_STAGES:
-            data["stage_guess"] = None
+        data = json.loads(raw)
     except Exception as exc:
-        # Fail safe: flag for manual review (via the fallback party name below)
-        # rather than dropping the update entirely on a Groq error or bad parse.
         print(f"extract_npd_update failed for {message_text[:120]!r}: {exc}")
         data = {
-            "party_name": "Unknown — needs review",
-            "contact_person": None,
-            "update_text": message_text[:280],
+            "party_name": None,
+            "update_summary": message_text[:140],
             "stage_guess": None,
-            "next_follow_up": None,
-            "potential_volume": None,
+            "next_follow_up_date": None,
         }
 
-    if not data.get("party_name"):
-        data["party_name"] = "Unknown — needs review"
-    if not data.get("update_text"):
-        data["update_text"] = message_text[:280]
+    if data.get("stage_guess") not in NPD_STAGES:
+        data["stage_guess"] = None
+
     return data
 
 
