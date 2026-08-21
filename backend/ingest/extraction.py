@@ -1,6 +1,8 @@
 """
 Uses the Groq API (free tier) to turn raw message text (from Gmail or
-WhatsApp) into structured fields ready to insert into the `enquiries` table.
+WhatsApp) into structured fields ready to insert into the `enquiries` table,
+plus NPD-specific extraction and voice-note transcription for the NPD
+WhatsApp line (see extract_npd_update() / transcribe_audio() below).
 """
 
 import json
@@ -110,9 +112,9 @@ NPD_STAGES = [
 
 NPD_EXTRACTION_PROMPT = """You are logging a WhatsApp update into a New Product Development (NPD)
 leads pipeline for a corrugated packaging company. Each message is an update from a salesperson
-about a prospective customer/party they are developing as a lead. Read the message below and
-return ONLY a JSON object (no markdown fences, no preamble, no explanation) with these exact
-fields:
+about a prospective customer/party they are developing as a lead — typed, or transcribed from a
+voice note (expect some transcription noise in that case). Read the message below and return ONLY
+a JSON object (no markdown fences, no preamble, no explanation) with these exact fields:
 
 {{
   "party_name": the name of the customer/prospect company (or contact) this update is about, as
@@ -142,7 +144,9 @@ def extract_npd_update(message_text: str) -> dict:
     """Call Groq to turn a raw NPD WhatsApp message into {party_name, update_summary,
     stage_guess, next_follow_up_date}. Same fail-open pattern as extract_fields(): on any
     Groq/parse error, return party_name=None (handle_npd_message treats that as "can't
-    auto-link, flag for manual review") rather than crashing or guessing a party."""
+    auto-link, flag for manual review") rather than crashing or guessing a party. Shared by
+    both whatsapp_text and whatsapp_voice sources in whatsapp_webhook.py — the caller just
+    picks which text (typed body or transcript) to feed in, so this logic exists once."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     prompt = NPD_EXTRACTION_PROMPT.format(
         today=today, message_text=message_text, stages=", ".join(NPD_STAGES)
@@ -174,3 +178,29 @@ def extract_npd_update(message_text: str) -> dict:
         data["stage_guess"] = None
 
     return data
+
+
+# Groq periodically retires model IDs (see MODEL above) — same reasoning applies
+# to the Whisper models, so this is configurable rather than hardcoded too.
+WHISPER_MODEL = os.environ.get("GROQ_WHISPER_MODEL") or "whisper-large-v3-turbo"
+
+
+def transcribe_audio(audio_bytes: bytes, filename: str) -> dict:
+    """
+    Transcribes a WhatsApp voice note via Groq's Whisper endpoint. Returns
+    {"text": ..., "duration": seconds}. verbose_json is the only response_format
+    that reports duration — WhatsApp's webhook payload and Graph API media
+    metadata don't expose it — so whatsapp_webhook.py's length guardrail checks
+    the duration in this result rather than before making the call.
+    """
+    response = client.audio.transcriptions.create(
+        model=WHISPER_MODEL,
+        file=(filename, audio_bytes),
+        response_format="verbose_json",
+        temperature=0,
+        prompt=(
+            "Corrugated packaging business call log: party names, box "
+            "specifications (ply, GSM, size), rates, and follow-up dates."
+        ),
+    )
+    return {"text": response.text.strip(), "duration": getattr(response, "duration", None)}

@@ -94,9 +94,20 @@ asking the sender to clarify, or flagging the message for manual review
 first.
 
 Set `WHATSAPP_ACCESS_TOKEN` (a Meta Graph API system-user token) to let
-the webhook send those replies — without it, replies are just printed to
-the log instead of sent, everything else still works. `WHATSAPP_API_VERSION`
-optionally overrides the Graph API version if Meta retires the default.
+the webhook send those replies and download NPD voice note media —
+without it, replies are just printed to the log instead of sent, and
+voice notes are flagged for manual review instead of transcribed; typed
+text still works either way. `WHATSAPP_API_VERSION` optionally overrides
+the Graph API version if Meta retires the default.
+
+Voice notes on the NPD line (`type: "audio"`) are downloaded via the Meta
+Graph API media endpoint and transcribed with Groq's Whisper endpoint
+(`GROQ_WHISPER_MODEL` optionally overrides the default model) before
+going through the same `extract_npd_update()`/fuzzy-matching path as
+typed text — the transcript is stored on `npd_updates.raw_transcript` so
+a mis-transcription is auditable later. A voice note over ~2 minutes or
+over a sane file-size limit is flagged for manual review rather than
+silently dropped: the sender gets a WhatsApp reply explaining why.
 
 ## 7. Daily digest (reminder emails)
 

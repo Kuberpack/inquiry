@@ -1,9 +1,10 @@
 """
-Thin wrapper around the Supabase client for writing enquiry records.
+Thin wrapper around the Supabase client for writing enquiry and NPD records.
 """
 
 import os
 
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 _supabase: Client | None = None
@@ -79,32 +80,52 @@ def update_npd_lead_stage(lead_id: str, stage: str) -> None:
     client.table("npd_leads").update({"stage": stage}).eq("id", lead_id).execute()
 
 
-def insert_npd_update(record: dict) -> dict:
+def insert_npd_update(record: dict) -> dict | None:
     """
     Plain insert, not upsert — idx_npd_updates_source_message_id is a
     partial unique index (see npd-schema.sql), and PostgREST's
     upsert(on_conflict=...) can't target a partial index, so it would
     400 here. Callers are expected to have already deduped via
-    get_npd_update_by_message_id() before calling this.
+    get_npd_update_by_message_id() before calling this — but that check
+    and this insert aren't atomic, so two BackgroundTasks racing on the
+    same source_message_id (e.g. Meta redelivering a webhook) can both
+    pass the dedup check before either has inserted. That's an expected
+    outcome of acking Meta immediately and processing async, not an
+    error: the loser hits this same unique constraint, and rather than
+    raising into the caller's generic error handling — which would
+    misfile it as needs_review and send the sender a confusing second
+    reply on top of the winner's already-successful one — it's treated
+    as a no-op and returns None.
     """
     client = get_client()
-    response = client.table("npd_updates").insert(record).execute()
+    try:
+        response = client.table("npd_updates").insert(record).execute()
+    except APIError as exc:
+        if exc.code == "23505":  # unique_violation — a concurrent duplicate, not a failure
+            return None
+        raise
     return response.data[0]
 
 
 def flag_npd_update_for_review(reason: str, raw_text: str, source_message_id: str,
-                                next_follow_up: str | None = None) -> dict:
+                                next_follow_up: str | None = None,
+                                source: str = "whatsapp_text",
+                                raw_transcript: str | None = None) -> dict | None:
     """
     Records a WhatsApp NPD message that couldn't be confidently linked to
-    a lead (no party name extracted, an ambiguous match, or a processing
-    error) — lead_id left null, needs_review=true — instead of losing it.
+    a lead (no party name extracted, an ambiguous match, an over-limit
+    voice note, or a processing error) — lead_id left null, needs_review=
+    true — instead of losing it. source/raw_transcript let a skipped
+    whatsapp_voice message keep its transcript for audit, same as a
+    successfully-linked one would via insert_npd_update().
     """
     record = {
         "lead_id": None,
         "update_text": f"[NEEDS REVIEW: {reason}] {raw_text[:2000]}",
         "next_follow_up": next_follow_up,
-        "source": "whatsapp_text",
+        "source": source,
         "source_message_id": source_message_id,
+        "raw_transcript": raw_transcript,
         "needs_review": True,
     }
     return insert_npd_update(record)

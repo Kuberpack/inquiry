@@ -81,19 +81,27 @@ Gmail inbox(es)                WhatsApp Business API
   payload and compares it to `NPD_PHONE_NUMBER_ID` (required env var) —
   a match routes to `handle_npd_message()`, anything else keeps going
   through the existing customer-enquiry path into `enquiries`.
-- **NPD message handling**: `handle_npd_message()` extracts
+- **NPD message handling**: `handle_npd_message()` dispatches by message
+  type, then both paths converge on the same `_process_npd_text()` logic.
+  Text messages feed their body straight in; voice notes (`type:
+  "audio"`) are downloaded via the Meta Graph API media endpoint and
+  transcribed with Groq's Whisper endpoint (`GROQ_WHISPER_MODEL`) first —
+  the transcript is stored on `npd_updates.raw_transcript` for audit, and
+  a voice note over ~2 minutes or a sane file-size limit is flagged for
+  manual review rather than transcribed. `_process_npd_text()` extracts
   `{party_name, update_summary, stage_guess, next_follow_up_date}` via
   Groq (`extract_npd_update()`), fuzzy-matches `party_name` against
   `npd_leads` via the `match_npd_leads()` DB function (pg_trgm,
   GIN-indexed — a single query, not a Python-side scan), then links to
   the one clear match, creates a new lead, or — on no confident
-  party/no single match/any Groq or DB error — stores the raw message
-  with `lead_id` null and `needs_review` true rather than dropping it.
-  Every path replies on WhatsApp (confirmation, a disambiguation
-  request, or a "flagged for manual review" notice) via
+  party/no single match/any Groq, transcription, or DB error — stores
+  the raw message with `lead_id` null and `needs_review` true rather
+  than dropping it. Every path replies on WhatsApp (confirmation, a
+  disambiguation request, or a "flagged for manual review" notice) via
   `send_whatsapp_message()` (Meta Graph API, needs
-  `WHATSAPP_ACCESS_TOKEN`). Requires `backend/npd-schema.sql` (still
-  draft — pending sign-off, see `schema.md`) to actually be applied.
+  `WHATSAPP_ACCESS_TOKEN` — also needed to download voice note media).
+  Requires `backend/npd-schema.sql` (still draft — pending sign-off, see
+  `schema.md`) to actually be applied.
 - **Webhook processing model**: `receive_message()` acks Meta with `200`
   immediately and hands each message to a FastAPI `BackgroundTask` for
   the actual work (Groq extraction, Supabase write). Meta retries a
@@ -146,9 +154,9 @@ restriction. Full column-level detail is in `schema.md`.
 | Service | Role | Credential type |
 |---|---|---|
 | Supabase | Postgres database + Realtime | `service_role` (backend), anon/publishable (frontend) |
-| Groq | LLM extraction (category/deadline/priority/relevance) | API key, GitHub Actions secret |
+| Groq | LLM extraction (category/deadline/priority/relevance, NPD fields) + Whisper voice transcription | API key, GitHub Actions secret |
 | Gmail API | Mail ingestion + digest sending | OAuth2 per account, GitHub Actions secret |
-| WhatsApp Cloud API (Meta) | Inbound webhook (all messages) + outbound NPD confirmation replies | `WHATSAPP_ACCESS_TOKEN` (Graph API), env var — optional, replies are just logged without it |
+| WhatsApp Cloud API (Meta) | Inbound webhook (all messages) + outbound NPD confirmation replies + NPD voice note media download | `WHATSAPP_ACCESS_TOKEN` (Graph API), env var — optional, replies are just logged and voice notes flagged for review without it |
 | Vercel | Dashboard hosting + Edge Middleware | Connected via Vercel's GitHub integration |
 | GitHub Actions | Scheduled ingestion + digest jobs | Repo secrets/variables |
 
