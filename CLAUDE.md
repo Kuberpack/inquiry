@@ -62,10 +62,14 @@ dashboard/
 - **Minimal dependencies.** Reach for a new npm/pip package only when it's
   clearly worth the weight — this project has stayed on vanilla
   React/CSS/Python deliberately.
-- **Ask before schema changes.** Any change to Supabase tables/columns
-  needs explicit sign-off before writing SQL — this has been a standing
-  rule since the Sales module discussion. Additive changes (new column,
-  new table) still need to be flagged, even if low-risk.
+- **Ask before schema changes.** Any change to Supabase tables/columns —
+  including additive ones (new column, new table), even if low-risk —
+  is never applied automatically. Print the SQL, explain what it does,
+  and stop for explicit sign-off before running it. This has been a
+  standing rule since the Sales module discussion.
+- **Design for 10-100x today's data volume.** New tables/queries need
+  indexes on anything filtered, joined, or sorted; no unbounded
+  `SELECT *`; no per-row loops that should be a single query.
 - **Fail open, not silent.** When an LLM call or parse can fail, default
   to the safer outcome that surfaces the item for manual review rather
   than silently dropping it (see `extraction.py`'s fail-safe JSON parse
@@ -104,6 +108,25 @@ dashboard/
 - If a PR conflicts with `main` because a more urgent fix landed first,
   merge `main` into the branch and resolve conflicts before merging —
   don't force through with `--force` or discard either side blindly.
+
+## Agent workflow rules
+
+These apply to any Claude session working in this repo, on top of the
+coding rules above:
+
+- **Adjacent low-risk fixes are in scope.** Spot a small, high-leverage
+  improvement next to what's being worked on (a missing index, an
+  obvious bug, a guard against a scaling issue) — make it, and say what
+  was added and why. Don't expand into a different feature without
+  flagging it first and getting a go-ahead.
+- **Verify against the spec before declaring done.** Before reporting a
+  phase complete, re-read the request top to bottom, check off each
+  requirement against what was actually built, and fix any gap. State
+  explicitly which requirements were verified and how — not just "looks
+  good."
+- **Update `todo.md` at the end of every phase** with what shipped and
+  what's still open, so the next session picks up from an accurate
+  state.
 
 ## Known non-obvious constraints
 

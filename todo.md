@@ -3,6 +3,14 @@
 Tasks and features discussed but not yet done, as of the last session.
 Checked items are shipped and merged to `main`; unchecked items are open.
 
+## Process / agent workflow
+
+- [x] Codify standing agent-session rules (adjacent low-risk fixes in
+      scope but flagged, schema changes always print-SQL-and-stop,
+      spec-checklist verification before declaring a phase done,
+      design for 10-100x data volume, update `todo.md` every phase)
+      into `CLAUDE.md` under a new "Agent workflow rules" section.
+
 ## Infra / deployment
 
 - [x] `deploy/` directory: systemd unit for `whatsapp_webhook.py`, cron
