@@ -19,7 +19,15 @@ create table if not exists npd_leads (
     party_name          text not null,
     contact_person      text,
     contact_phone       text,
-    stage               text not null default 'New Lead',
+    stage               text not null default 'New Lead' check (stage in (
+                             'New Lead',
+                             'In Progress (Samples/Rates)',
+                             'Awaiting Response',
+                             'Rate Negotiation',
+                             'On Hold',
+                             'Active/Won',
+                             'Rate Mismatch (Lost)'
+                         )),
     potential_volume    text,
     created_at          timestamptz not null default now(),
     updated_at          timestamptz not null default now()
