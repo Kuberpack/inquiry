@@ -3,6 +3,22 @@
 Tasks and features discussed but not yet done, as of the last session.
 Checked items are shipped and merged to `main`; unchecked items are open.
 
+## Infra / deployment
+
+- [x] `deploy/` directory: systemd unit for `whatsapp_webhook.py`, cron
+      entries for `gmail_ingest.py`/`daily_digest.py`, nginx config
+      (`api.kuberpack.com` webhook proxy + `dashboard.kuberpack.com`
+      static dashboard with a Basic Auth gate replacing the Vercel Edge
+      middleware), and a step-by-step `deploy/README.md` for an Oracle
+      Cloud VM. `.github/workflows/*.yml` and Vercel are untouched and
+      still live as the fallback.
+- [ ] Actually provision the Oracle Cloud VM and run through
+      `deploy/README.md` end to end (DNS, firewall, SSL, WhatsApp webhook
+      URL) — written but not yet executed against a real box.
+- [ ] Once the VM deployment is confirmed stable, disable
+      `.github/workflows/check-mail.yml` and `daily-digest.yml` and the
+      Vercel project, in a separate change.
+
 ## Verification / immediate follow-ups
 
 - [ ] Confirm `check-mail` GitHub Action actually succeeds on a live run
