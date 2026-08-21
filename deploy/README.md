@@ -5,7 +5,7 @@ Replaces GitHub Actions + ngrok (`.github/workflows/check-mail.yml`,
 running on one free-tier Ubuntu VM:
 
 - `whatsapp_webhook.py` as a systemd service, reverse-proxied by nginx
-- `gmail_ingest.py` / `daily_digest.py` as cron jobs
+- `gmail_ingest.py` / `daily_digest.py` / `npd_reminders.py` as cron jobs
 - `dashboard/dist` served by nginx as static files
 
 `.github/workflows/*.yml` are left untouched — keep them as a fallback
@@ -118,6 +118,8 @@ WHATSAPP_API_VERSION=
 DIGEST_FROM_ACCOUNT=
 DIGEST_RECIPIENTS=
 DASHBOARD_URL=
+STALE_DAYS_THRESHOLD=10
+INTERNAL_TEAM_NUMBERS=
 EOF
 sudo chmod 600 /etc/kuberpack/.env
 ```
@@ -135,7 +137,11 @@ the NPD WhatsApp number is actually provisioned with Meta.
 `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_API_VERSION` are optional, read at
 call time, not import time — leave them blank and the service still
 starts and ingests NPD messages, it just logs confirmation/clarification
-replies instead of sending them on WhatsApp.
+replies instead of sending them on WhatsApp. `INTERNAL_TEAM_NUMBERS`
+(comma-separated) is who `npd_reminders.py` sends the daily stale-lead
+WhatsApp summary to — leave it blank and the job just logs "nothing to
+send to" and exits. `STALE_DAYS_THRESHOLD` (default 10) controls how many
+days without a follow-up before a lead counts as stale.
 
 **Quoting note (why this needs Ubuntu 22.04+):** if you set
 `GMAIL_QUERY_OVERRIDES` (only needed for a mixed personal/business
@@ -164,7 +170,7 @@ curl -i "http://127.0.0.1:8000/webhook?hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&
 journalctl -u whatsapp-webhook -f        # tail logs
 ```
 
-## 6. Cron jobs (Gmail poll + daily digest)
+## 6. Cron jobs (Gmail poll + daily digest + NPD stale-lead reminder)
 
 ```bash
 sudo mkdir -p /var/log/kuberpack
@@ -172,8 +178,9 @@ sudo chown kuberpack:kuberpack /var/log/kuberpack
 
 sudo cp /opt/kuberpack/inquiry/deploy/gmail-ingest.cron /etc/cron.d/kuberpack-gmail-ingest
 sudo cp /opt/kuberpack/inquiry/deploy/daily-digest.cron /etc/cron.d/kuberpack-daily-digest
-sudo chown root:root /etc/cron.d/kuberpack-gmail-ingest /etc/cron.d/kuberpack-daily-digest
-sudo chmod 644 /etc/cron.d/kuberpack-gmail-ingest /etc/cron.d/kuberpack-daily-digest
+sudo cp /opt/kuberpack/inquiry/deploy/npd-reminders.cron /etc/cron.d/kuberpack-npd-reminders
+sudo chown root:root /etc/cron.d/kuberpack-gmail-ingest /etc/cron.d/kuberpack-daily-digest /etc/cron.d/kuberpack-npd-reminders
+sudo chmod 644 /etc/cron.d/kuberpack-gmail-ingest /etc/cron.d/kuberpack-daily-digest /etc/cron.d/kuberpack-npd-reminders
 ```
 
 `/etc/cron.d` files are picked up automatically — no cron restart needed

@@ -107,6 +107,35 @@ def insert_npd_update(record: dict) -> dict | None:
     return response.data[0]
 
 
+# Leads in these stages are done (won or lost) — no further follow-up is
+# expected, so they're excluded from the staleness check regardless of age.
+NPD_STALE_CHECK_EXCLUDED_STAGES = ["Active/Won", "Rate Mismatch (Lost)"]
+
+
+def fetch_leads_for_staleness_check() -> list[dict]:
+    """
+    One request: every npd_leads row not in a terminal stage, each with
+    only its single most recent npd_updates row embedded (PostgREST
+    applies the .order()/.limit(foreign_table=...) as a per-parent lateral
+    query) — a lead with zero updates comes back with an empty list rather
+    than being dropped. This avoids pulling every lead's full update
+    history (or looping query-per-lead) into Python just to find the
+    latest one: the embedded lookup uses idx_npd_updates_lead_id to find
+    only that lead's rows and idx_npd_updates_update_date to pick the most
+    recent, same as the top-N-per-group EXPLAIN plan.
+    """
+    client = get_client()
+    response = (
+        client.table("npd_leads")
+        .select("id, party_name, stage, created_at, npd_updates(update_date)")
+        .not_.in_("stage", NPD_STALE_CHECK_EXCLUDED_STAGES)
+        .order("update_date", desc=True, foreign_table="npd_updates")
+        .limit(1, foreign_table="npd_updates")
+        .execute()
+    )
+    return response.data or []
+
+
 def flag_npd_update_for_review(reason: str, raw_text: str, source_message_id: str,
                                 next_follow_up: str | None = None,
                                 source: str = "whatsapp_text",

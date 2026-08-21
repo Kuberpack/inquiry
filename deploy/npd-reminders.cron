@@ -1,0 +1,15 @@
+# Kuberpack — daily NPD stale-lead WhatsApp reminder at 09:15 IST / 03:45 UTC,
+# shortly after the enquiry digest (daily-digest.cron, 03:30 UTC).
+#
+# This is an /etc/cron.d fragment (includes the user field), not a
+# `crontab -e` file. Install:
+#   sudo cp deploy/npd-reminders.cron /etc/cron.d/kuberpack-npd-reminders
+#   sudo chown root:root /etc/cron.d/kuberpack-npd-reminders
+#   sudo chmod 644 /etc/cron.d/kuberpack-npd-reminders
+#
+# npd_reminders.py imports whatsapp_webhook.py (to reuse send_whatsapp_message())
+# and db.py, so it needs the same full env as the webhook service — including
+# NPD_PHONE_NUMBER_ID and, transitively via extraction.py, GROQ_API_KEY — plus
+# STALE_DAYS_THRESHOLD and INTERNAL_TEAM_NUMBERS.
+
+45 3 * * * kuberpack cd /opt/kuberpack/inquiry/backend/ingest && set -a && . /etc/kuberpack/.env && set +a && /opt/kuberpack/inquiry/backend/venv/bin/python3 npd_reminders.py >> /var/log/kuberpack/npd-reminders.log 2>&1
