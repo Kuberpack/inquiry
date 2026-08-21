@@ -76,6 +76,17 @@ Gmail inbox(es)                WhatsApp Business API
   source, plus an optional per-account Gmail query override
   (`GMAIL_QUERY_OVERRIDES`) to scope a mixed personal/business inbox to a
   label before it's even fetched.
+- **WhatsApp routing**: one webhook, two WhatsApp Business numbers.
+  `whatsapp_webhook.py` reads `metadata.phone_number_id` off each inbound
+  payload and compares it to `NPD_PHONE_NUMBER_ID` (required env var) —
+  a match routes to `handle_npd_message()` (stub, pending `npd_leads`/
+  `npd_updates` — see `schema.md`), anything else keeps going through the
+  existing customer-enquiry path into `enquiries`.
+- **Webhook processing model**: `receive_message()` acks Meta with `200`
+  immediately and hands each message to a FastAPI `BackgroundTask` for
+  the actual work (Groq extraction, Supabase write). Meta retries a
+  slow/timed-out webhook response, and without this a retry landing
+  mid-processing would insert the same message twice.
 
 ## Frontend
 
@@ -105,6 +116,13 @@ Two logically separate schemas in the same project:
    dashboard; `sales_enquiries.source_enquiry_id` links back to the
    originating `enquiries` row when created via "Convert to Sales
    Enquiry".
+3. **NPD module** (`npd_leads`, `npd_updates`, `backend/npd-schema.sql`,
+   **draft — not yet applied**) — leads pipeline fed by a dedicated
+   WhatsApp Business number (voice and text) plus manual dashboard entry,
+   independent of `enquiries` and the Sales module. `npd_leads.stage` is
+   the single source of truth for the pipeline stage vocabulary, reused
+   verbatim by the Groq `stage_guess` extraction and the dashboard Kanban
+   columns — see `schema.md`.
 
 Row Level Security is enabled on every table with permissive
 `using (true)` policies — access control is via the anon key's

@@ -112,6 +112,7 @@ GMAIL_ACCOUNTS=
 GMAIL_QUERY=is:unread
 GMAIL_QUERY_OVERRIDES=
 WHATSAPP_VERIFY_TOKEN=
+NPD_PHONE_NUMBER_ID=
 DIGEST_FROM_ACCOUNT=
 DIGEST_RECIPIENTS=
 DASHBOARD_URL=
@@ -126,6 +127,9 @@ and the digest job don't call Groq directly for every code path —
 `daily_digest.py` imports `gmail_ingest.py`, which imports
 `extraction.py`, which reads `GROQ_API_KEY` at **import time**; without
 it `daily_digest.py` crashes with a `KeyError` before it does anything.
+Likewise `NPD_PHONE_NUMBER_ID` is read at import time in
+`whatsapp_webhook.py` — the service won't start without it, even before
+the NPD WhatsApp number is actually provisioned with Meta.
 
 **Quoting note (why this needs Ubuntu 22.04+):** if you set
 `GMAIL_QUERY_OVERRIDES` (only needed for a mixed personal/business
