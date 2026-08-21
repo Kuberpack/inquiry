@@ -72,9 +72,8 @@ Checked items are shipped and merged to `main`; unchecked items are open.
 ## NPD (New Product Development) module
 
 Leads pipeline fed by a dedicated WhatsApp Business number (voice/text)
-plus manual dashboard entry. `backend/npd-schema.sql` and the
-`schema.md`/`archi.md` sections are drafted; nothing has been applied to
-Supabase yet.
+plus manual dashboard entry. `backend/npd-schema.sql` is applied and live
+in Supabase (`npd_leads`/`npd_updates`/`match_npd_leads` all confirmed).
 
 - [x] Draft `npd_leads`/`npd_updates` schema — signed off, including the
       `stage` check constraint (7-value pipeline, documented in
@@ -128,15 +127,61 @@ Supabase yet.
       transcription → extraction → matching → DB insert, and both
       guardrails) against a real short audio file with only the
       Meta/Groq/Supabase network calls mocked — see PR description.
-- [ ] Run `backend/npd-schema.sql` against the live Supabase project,
-      **including the Phase 3 amendments above** — still just a draft
-      file, needs sign-off and to actually be executed.
+- [x] `backend/npd-schema.sql` (`npd_leads`/`npd_updates`/`match_npd_leads`)
+      applied and confirmed live in Supabase.
+- [x] Phase 5: stale-lead WhatsApp reminder — `backend/ingest/npd_reminders.py`
+      + `db.fetch_leads_for_staleness_check()`. Flags any lead whose most
+      recent contact (latest `npd_updates.update_date`, or
+      `npd_leads.created_at` if it's never had one) is more than
+      `STALE_DAYS_THRESHOLD` days old (default 10, env-configurable),
+      excluding leads already in `Active/Won` or `Rate Mismatch (Lost)`.
+      One WhatsApp message per number in `INTERNAL_TEAM_NUMBERS`
+      (comma-separated, new env var) listing party/days-since-contact/stage,
+      most-stale first — sent only if something's flagged (no daily
+      "all clear" noise; reasoning is in a comment in `send_reminders()`).
+      **Single query, not a per-lead loop**: fetches every non-terminal-stage
+      lead with just its most recent `npd_updates` row embedded, via
+      PostgREST's per-parent `order()`/`limit(foreign_table=...)` — verified
+      via `EXPLAIN ANALYZE` that the per-lead lookup uses
+      `idx_npd_updates_lead_id` (not a sequential scan per lead), so this
+      stays cheap as lead/update volume grows. Fail-open throughout: a
+      malformed lead row is logged and skipped rather than crashing the
+      run, and a WhatsApp send failure for one number doesn't stop sends to
+      the rest.
+
+      **Verification**: no live Supabase credentials are available in this
+      sandboxed environment, so this wasn't run against the actual
+      production project. Instead it was verified against a *real*
+      Postgres 16 + a real PostgREST binary running the actual
+      `schema.sql`/`npd-schema.sql` unmodified, hit through the real
+      `supabase-py`/`postgrest-py` client code in `db.py` (not a mocked
+      client) — this exercises the real SQL semantics and the real REST
+      query-building, just against a local instance instead of the hosted
+      one. Confirmed: a lead with zero updates ever surfaces using
+      `created_at` and doesn't crash the query; a lead in `Active/Won` or
+      `Rate Mismatch (Lost)` past the threshold is excluded even though it's
+      stale; a lead 9 days since contact (threshold 10) is not flagged, one
+      at 11 days is; a lead with multiple updates correctly uses the most
+      recent by `update_date`, not insertion order or the oldest; a
+      simulated WhatsApp send failure for one number doesn't stop delivery
+      to the others; a malformed lead row is skipped without crashing the
+      rest of the run. Still open: an actual dry run against the live
+      Supabase project once someone can hand over/rotate a temporary
+      service-role key for it, or run it directly there.
 - [ ] Set `NPD_PHONE_NUMBER_ID` in `/etc/kuberpack/.env` (and any other
       deployment env) once the NPD WhatsApp Business number is
-      provisioned with Meta — the webhook won't start without it.
+      provisioned with Meta — the webhook won't start without it. This is
+      also a hard import-time dependency for `npd_reminders.py` now (it
+      reuses `send_whatsapp_message()` from `whatsapp_webhook.py`).
 - [ ] Set `WHATSAPP_ACCESS_TOKEN` (Meta Graph API system-user token) once
       available, so NPD WhatsApp replies actually send and voice notes
       actually transcribe instead of being flagged for manual review.
+- [ ] Set `INTERNAL_TEAM_NUMBERS` (comma-separated WhatsApp numbers) once
+      decided who should receive the daily stale-lead reminder — without
+      it, `npd_reminders.py` just logs "nothing to send to" and exits.
+- [ ] Install `deploy/npd-reminders.cron` on the VM — not yet done, same
+      as the rest of Phase 1's VM deployment (not provisioned yet), so
+      this isn't a blocker specific to this phase.
 - [ ] Phase 6: dashboard NPD Kanban view, columns driven by the same
       `schema.md` stage list, plus a "needs review" queue surfacing
       `npd_updates` rows where `needs_review` is true so someone can

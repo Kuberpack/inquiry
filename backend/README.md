@@ -126,6 +126,24 @@ below):
 
 Run it manually to test: `cd ingest && python daily_digest.py`.
 
+## 8. NPD stale-lead reminder (WhatsApp)
+
+`ingest/npd_reminders.py` flags every NPD lead whose most recent contact
+(its latest `npd_updates.update_date`, or `npd_leads.created_at` if it's
+never had one) is more than `STALE_DAYS_THRESHOLD` days old (default 10),
+excluding leads already in a terminal stage (`Active/Won`, `Rate Mismatch
+(Lost)`). If any are flagged, it sends one WhatsApp message — party name,
+days since contact, current stage, most-stale first — to every number in
+`INTERNAL_TEAM_NUMBERS` (comma-separated), via the same
+`send_whatsapp_message()`/`NPD_PHONE_NUMBER_ID` Meta Graph API call used
+for NPD update confirmations. No message is sent if nothing's stale.
+
+Because it imports `whatsapp_webhook.py` to reuse that function, it
+inherits the same import-time requirement on `NPD_PHONE_NUMBER_ID` (and,
+transitively via `extraction.py`, `GROQ_API_KEY`) even though it doesn't
+otherwise use either. Run it manually to test:
+`cd ingest && python npd_reminders.py`.
+
 ## What's next
 
 Once messages are flowing into `enquiries`, the dashboard just reads from
