@@ -81,14 +81,25 @@ the same `WHATSAPP_VERIFY_TOKEN` you set in `.env`. You'll need this
 running behind a public HTTPS URL (a reverse proxy or a tunnel like
 ngrok for testing).
 
-`NPD_PHONE_NUMBER_ID` is **required** (read at import time, so the
-server won't start without it) — set it to the `phone_number_id` Meta
-reports in each payload's `entry[0].changes[0].value.metadata` for the
-dedicated NPD WhatsApp Business number. Messages arriving on that number
-are routed to `handle_npd_message()` (stubbed pending the `npd_leads`/
-`npd_updates` tables in `backend/npd-schema.sql`) instead of the
-customer-enquiry pipeline; everything else keeps going to `enquiries`
+`NPD_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` are **required** (read
+at import time, so the server won't start without them) — set
+`NPD_PHONE_NUMBER_ID` to the `phone_number_id` Meta reports in each
+payload's `entry[0].changes[0].value.metadata` for the dedicated NPD
+WhatsApp Business number, and `WHATSAPP_ACCESS_TOKEN` to a Graph API
+access token (System User token, not the 24h temporary one from the
+dashboard). Messages arriving on that number are routed to
+`handle_npd_message()`, which extracts fields via Groq
+(`extract_npd_update()`) and upserts into `npd_leads`/`npd_updates` (see
+`backend/npd-schema.sql`); everything else keeps going to `enquiries`
 exactly as before.
+
+Voice notes on the NPD line (`type: "audio"`) are downloaded via the Meta
+Graph API media endpoint and transcribed with Groq's Whisper endpoint
+before going through the same `extract_npd_update()` path as typed text
+— the transcript is stored on `npd_updates.raw_transcript` so a
+mis-transcription is auditable later. A voice note over ~2 minutes or
+over a sane file-size limit is skipped (not silently dropped): the
+sender gets a WhatsApp reply explaining why, and the reason is logged.
 
 ## 7. Daily digest (reminder emails)
 

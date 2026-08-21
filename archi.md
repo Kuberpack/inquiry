@@ -79,9 +79,17 @@ Gmail inbox(es)                WhatsApp Business API
 - **WhatsApp routing**: one webhook, two WhatsApp Business numbers.
   `whatsapp_webhook.py` reads `metadata.phone_number_id` off each inbound
   payload and compares it to `NPD_PHONE_NUMBER_ID` (required env var) —
-  a match routes to `handle_npd_message()` (stub, pending `npd_leads`/
-  `npd_updates` — see `schema.md`), anything else keeps going through the
-  existing customer-enquiry path into `enquiries`.
+  a match routes to `handle_npd_message()`, which extracts fields via
+  Groq (`extract_npd_update()` in `extraction.py`) and upserts into
+  `npd_leads`/`npd_updates` (see `schema.md`); anything else keeps going
+  through the existing customer-enquiry path into `enquiries`. Voice
+  notes on the NPD line (`type: "audio"`) are downloaded via the Meta
+  Graph API media endpoint (`WHATSAPP_ACCESS_TOKEN`, required env var)
+  and transcribed with Groq's Whisper endpoint before going through the
+  same `extract_npd_update()` path as typed text; the transcript is
+  stored on `npd_updates.raw_transcript`. A voice note over ~2 minutes or
+  a sane file-size limit is skipped rather than processed, and the
+  sender gets a WhatsApp reply explaining why.
 - **Webhook processing model**: `receive_message()` acks Meta with `200`
   immediately and hands each message to a FastAPI `BackgroundTask` for
   the actual work (Groq extraction, Supabase write). Meta retries a
@@ -134,8 +142,9 @@ restriction. Full column-level detail is in `schema.md`.
 | Service | Role | Credential type |
 |---|---|---|
 | Supabase | Postgres database + Realtime | `service_role` (backend), anon/publishable (frontend) |
-| Groq | LLM extraction (category/deadline/priority/relevance) | API key, GitHub Actions secret |
+| Groq | LLM extraction (category/deadline/priority/relevance, NPD fields) + Whisper voice transcription | API key, GitHub Actions secret |
 | Gmail API | Mail ingestion + digest sending | OAuth2 per account, GitHub Actions secret |
+| Meta Graph API | WhatsApp NPD voice note media download + guardrail replies | System User access token (`WHATSAPP_ACCESS_TOKEN`) |
 | Vercel | Dashboard hosting + Edge Middleware | Connected via Vercel's GitHub integration |
 | GitHub Actions | Scheduled ingestion + digest jobs | Repo secrets/variables |
 

@@ -80,18 +80,37 @@ Supabase yet.
       `stage` check constraint (7-value pipeline, documented in
       `schema.md` as the single source of truth for Phase 3/Phase 6).
 - [x] `whatsapp_webhook.py` routes by `metadata.phone_number_id`:
-      `NPD_PHONE_NUMBER_ID` (required env var) → `handle_npd_message()`
-      (stub), everything else → the unchanged customer-enquiry path.
+      `NPD_PHONE_NUMBER_ID` (required env var) → `handle_npd_message()`,
+      everything else → the unchanged customer-enquiry path.
 - [ ] Run `backend/npd-schema.sql` against the live Supabase project
       (still just a draft file — needs to actually be executed).
-- [ ] Set `NPD_PHONE_NUMBER_ID` in `/etc/kuberpack/.env` (and any other
-      deployment env) once the NPD WhatsApp Business number is
-      provisioned with Meta — the webhook won't start without it.
-- [ ] Phase 3: Groq extraction for NPD messages — `stage_guess` (using
-      the `schema.md` stage list), party matching against `npd_leads`
-      via the `party_name` trigram index, voice transcription for
-      `whatsapp_voice` updates, then upsert into
-      `npd_leads`/`npd_updates` from `handle_npd_message()`.
+- [ ] Set `NPD_PHONE_NUMBER_ID` and `WHATSAPP_ACCESS_TOKEN` in
+      `/etc/kuberpack/.env` (and any other deployment env) once the NPD
+      WhatsApp Business number is provisioned with Meta — the webhook
+      won't start without them.
+- [x] Phase 3: Groq extraction for NPD messages — `extract_npd_update()`
+      in `extraction.py` returns `party_name`/`stage_guess`/`update_text`/
+      `next_follow_up`/`potential_volume`/`contact_person` from either a
+      typed message or a voice transcript. Party matching against
+      `npd_leads` is done via `ILIKE` (exact, then substring) in
+      `db._find_or_create_npd_lead()` — the `party_name` trigram index
+      speeds up the `ILIKE` scan, but this isn't true typo-tolerant
+      `similarity()` fuzzy matching (that needs a Postgres RPC function,
+      which is a schema change and wasn't added — revisit if `ILIKE`
+      substring matching proves too weak once there's real traffic).
+- [x] Voice transcription for `whatsapp_voice` updates — `handle_npd_message()`
+      detects `type: "audio"`, downloads the media via the Meta Graph API
+      (`WHATSAPP_ACCESS_TOKEN`, new required env var), transcribes with
+      Groq Whisper (`GROQ_WHISPER_MODEL`, configurable), and feeds the
+      transcript into the same `extract_npd_update()` path as typed text.
+      Transcript is stored on `npd_updates.raw_transcript` for audit.
+      Guardrails: audio over ~2 minutes (checked post-transcription, since
+      neither the webhook payload nor the Graph API media metadata expose
+      duration) or over 8MB (checked pre-download) is skipped, logged, and
+      replied to the sender explaining why — never silently dropped.
+      Verified end-to-end (media download → transcription → extraction →
+      DB upsert, and both guardrails) against a real short audio file with
+      only the Meta/Groq/Supabase network calls mocked — see PR description.
 - [ ] Phase 6: dashboard NPD Kanban view, columns driven by the same
       `schema.md` stage list.
 
