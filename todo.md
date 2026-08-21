@@ -56,6 +56,36 @@ Checked items are shipped and merged to `main`; unchecked items are open.
       failing again (the Groq outage went undetected for over a day;
       the daily digest partially covers this but there's no direct
       "ingestion is broken" alert).
+- [x] Fix `whatsapp_webhook.py` processing messages synchronously before
+      acking Meta — now returns 200 immediately and does the Groq
+      call/DB write in a `BackgroundTask`, so a Meta retry on a slow
+      response can no longer double-insert a message.
+
+## NPD (New Product Development) module
+
+Leads pipeline fed by a dedicated WhatsApp Business number (voice/text)
+plus manual dashboard entry. `backend/npd-schema.sql` and the
+`schema.md`/`archi.md` sections are drafted; nothing has been applied to
+Supabase yet.
+
+- [x] Draft `npd_leads`/`npd_updates` schema — signed off, including the
+      `stage` check constraint (7-value pipeline, documented in
+      `schema.md` as the single source of truth for Phase 3/Phase 6).
+- [x] `whatsapp_webhook.py` routes by `metadata.phone_number_id`:
+      `NPD_PHONE_NUMBER_ID` (required env var) → `handle_npd_message()`
+      (stub), everything else → the unchanged customer-enquiry path.
+- [ ] Run `backend/npd-schema.sql` against the live Supabase project
+      (still just a draft file — needs to actually be executed).
+- [ ] Set `NPD_PHONE_NUMBER_ID` in `/etc/kuberpack/.env` (and any other
+      deployment env) once the NPD WhatsApp Business number is
+      provisioned with Meta — the webhook won't start without it.
+- [ ] Phase 3: Groq extraction for NPD messages — `stage_guess` (using
+      the `schema.md` stage list), party matching against `npd_leads`
+      via the `party_name` trigram index, voice transcription for
+      `whatsapp_voice` updates, then upsert into
+      `npd_leads`/`npd_updates` from `handle_npd_message()`.
+- [ ] Phase 6: dashboard NPD Kanban view, columns driven by the same
+      `schema.md` stage list.
 
 ## Frontend / dashboard
 
