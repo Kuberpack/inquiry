@@ -252,13 +252,15 @@ def handle_npd_message(msg: dict) -> None:
 def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
     if not WHATSAPP_ACCESS_TOKEN:
         try:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 "voice note received but WHATSAPP_ACCESS_TOKEN not configured", "", msg_id,
                 source="whatsapp_voice",
             )
         except Exception as exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {exc}")
-        send_whatsapp_message(sender, "Voice notes aren't available right now — please type your update instead.")
+            flagged = True  # a real failure, not a clean duplicate no-op — still reply below
+        if flagged is not None:
+            send_whatsapp_message(sender, "Voice notes aren't available right now — please type your update instead.")
         return
 
     media_id = audio["id"]
@@ -268,30 +270,34 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
     except AudioTooLarge as exc:
         print(f"NPD webhook: voice note from {sender} skipped — {exc.file_size} bytes over the {MAX_AUDIO_BYTES} limit")
         try:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 f"voice note too large ({exc.file_size} bytes)", "", msg_id,
                 source="whatsapp_voice",
             )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
-        send_whatsapp_message(
-            sender, "That voice note is too large to process. Please send a shorter one "
-                    "(under ~2 minutes) or type your update instead.",
-        )
+            flagged = True
+        if flagged is not None:
+            send_whatsapp_message(
+                sender, "That voice note is too large to process. Please send a shorter one "
+                        "(under ~2 minutes) or type your update instead.",
+            )
         return
     except httpx.HTTPError as exc:
         print(f"NPD webhook: voice note from {sender} — media download failed: {exc}")
         try:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 "voice note media download failed", "", msg_id,
                 source="whatsapp_voice",
             )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
-        send_whatsapp_message(
-            sender, "We couldn't download your voice note. Please try sending it again "
-                    "or type your update instead.",
-        )
+            flagged = True
+        if flagged is not None:
+            send_whatsapp_message(
+                sender, "We couldn't download your voice note. Please try sending it again "
+                        "or type your update instead.",
+            )
         return
 
     extension = "ogg" if "ogg" in mime_type else mime_type.split("/")[-1].split(";")[0]
@@ -305,16 +311,18 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
         # failure means there's no text to extract from at all).
         print(f"NPD webhook: voice note from {sender} — transcription failed: {exc}")
         try:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 "voice note transcription failed", "", msg_id,
                 source="whatsapp_voice",
             )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
-        send_whatsapp_message(
-            sender, "We couldn't transcribe your voice note. Please try again or type "
-                    "your update instead.",
-        )
+            flagged = True
+        if flagged is not None:
+            send_whatsapp_message(
+                sender, "We couldn't transcribe your voice note. Please try again or type "
+                        "your update instead.",
+            )
         return
 
     duration = transcript["duration"]
@@ -324,16 +332,18 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
             f"{MAX_AUDIO_SECONDS}s limit; transcript for reference: {transcript['text'][:300]!r}"
         )
         try:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 f"voice note too long ({duration:.0f}s)", transcript["text"], msg_id,
                 source="whatsapp_voice", raw_transcript=transcript["text"],
             )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
-        send_whatsapp_message(
-            sender, "That voice note is longer than 2 minutes. Please send a shorter "
-                    "update or type it instead.",
-        )
+            flagged = True
+        if flagged is not None:
+            send_whatsapp_message(
+                sender, "That voice note is longer than 2 minutes. Please send a shorter "
+                        "update or type it instead.",
+            )
         return
 
     _process_npd_text(msg_id, sender, transcript["text"], source="whatsapp_voice", raw_transcript=transcript["text"])
@@ -354,28 +364,30 @@ def _process_npd_text(msg_id: str, sender: str, text: str, source: str, raw_tran
         update_summary = (extracted.get("update_summary") or text[:2000]).strip()
 
         if not party_name:
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 "no party name identified", text, msg_id, next_follow_up,
                 source=source, raw_transcript=raw_transcript,
             )
-            send_whatsapp_message(
-                sender, "Got your update but couldn't tell which party it's about — "
-                        "flagged for manual review."
-            )
+            if flagged is not None:
+                send_whatsapp_message(
+                    sender, "Got your update but couldn't tell which party it's about — "
+                            "flagged for manual review."
+                )
             return
 
         matches = find_matching_npd_leads(party_name, threshold=NPD_MATCH_THRESHOLD)
 
         if len(matches) > 1:
             names = ", ".join(m["party_name"] for m in matches[:3])
-            flag_npd_update_for_review(
+            flagged = flag_npd_update_for_review(
                 f"ambiguous party match: {names}", text, msg_id, next_follow_up,
                 source=source, raw_transcript=raw_transcript,
             )
-            send_whatsapp_message(
-                sender, f"Found more than one similar party — {names}. Reply with the exact "
-                        "party name to log this update."
-            )
+            if flagged is not None:
+                send_whatsapp_message(
+                    sender, f"Found more than one similar party — {names}. Reply with the exact "
+                            "party name to log this update."
+                )
             return
 
         if matches:
@@ -385,7 +397,7 @@ def _process_npd_text(msg_id: str, sender: str, text: str, source: str, raw_tran
         else:
             lead = create_npd_lead(party_name, stage_guess)
 
-        insert_npd_update({
+        inserted = insert_npd_update({
             "lead_id": lead["id"],
             "update_text": update_summary,
             "next_follow_up": next_follow_up,
@@ -393,6 +405,8 @@ def _process_npd_text(msg_id: str, sender: str, text: str, source: str, raw_tran
             "source_message_id": msg_id,
             "raw_transcript": raw_transcript,
         })
+        if inserted is None:
+            return  # a concurrent delivery of this message already logged it and replied
 
         follow_up_suffix = ""
         if next_follow_up:
@@ -402,7 +416,9 @@ def _process_npd_text(msg_id: str, sender: str, text: str, source: str, raw_tran
     except Exception as exc:
         print(f"handle_npd_message failed for {msg_id}: {exc}")
         try:
-            flag_npd_update_for_review("processing error", text, msg_id, source=source, raw_transcript=raw_transcript)
+            flagged = flag_npd_update_for_review("processing error", text, msg_id, source=source, raw_transcript=raw_transcript)
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review also failed for {msg_id}: {inner_exc}")
-        send_whatsapp_message(sender, "Something went wrong logging that update — flagged for manual review.")
+            flagged = True
+        if flagged is not None:
+            send_whatsapp_message(sender, "Something went wrong logging that update — flagged for manual review.")
