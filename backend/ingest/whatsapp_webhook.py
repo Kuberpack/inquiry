@@ -252,7 +252,10 @@ def handle_npd_message(msg: dict) -> None:
 def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
     if not WHATSAPP_ACCESS_TOKEN:
         try:
-            flag_npd_update_for_review("voice note received but WHATSAPP_ACCESS_TOKEN not configured", "", msg_id)
+            flag_npd_update_for_review(
+                "voice note received but WHATSAPP_ACCESS_TOKEN not configured", "", msg_id,
+                source="whatsapp_voice",
+            )
         except Exception as exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {exc}")
         send_whatsapp_message(sender, "Voice notes aren't available right now — please type your update instead.")
@@ -265,7 +268,10 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
     except AudioTooLarge as exc:
         print(f"NPD webhook: voice note from {sender} skipped — {exc.file_size} bytes over the {MAX_AUDIO_BYTES} limit")
         try:
-            flag_npd_update_for_review(f"voice note too large ({exc.file_size} bytes)", "", msg_id)
+            flag_npd_update_for_review(
+                f"voice note too large ({exc.file_size} bytes)", "", msg_id,
+                source="whatsapp_voice",
+            )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
         send_whatsapp_message(
@@ -276,7 +282,10 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
     except httpx.HTTPError as exc:
         print(f"NPD webhook: voice note from {sender} — media download failed: {exc}")
         try:
-            flag_npd_update_for_review("voice note media download failed", "", msg_id)
+            flag_npd_update_for_review(
+                "voice note media download failed", "", msg_id,
+                source="whatsapp_voice",
+            )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
         send_whatsapp_message(
@@ -296,7 +305,10 @@ def _handle_npd_voice_message(msg_id: str, sender: str, audio: dict) -> None:
         # failure means there's no text to extract from at all).
         print(f"NPD webhook: voice note from {sender} — transcription failed: {exc}")
         try:
-            flag_npd_update_for_review("voice note transcription failed", "", msg_id)
+            flag_npd_update_for_review(
+                "voice note transcription failed", "", msg_id,
+                source="whatsapp_voice",
+            )
         except Exception as inner_exc:
             print(f"flag_npd_update_for_review failed for {msg_id}: {inner_exc}")
         send_whatsapp_message(
