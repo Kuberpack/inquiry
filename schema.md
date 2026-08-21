@@ -233,21 +233,35 @@ constraint, the LLM prompt, and the UI can't drift apart:
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `lead_id` | `uuid` | FK → `npd_leads(id)`, `on delete cascade`, not null |
+| `lead_id` | `uuid` | FK → `npd_leads(id)`, `on delete cascade`, **nullable** — null when `handle_npd_message()` couldn't confidently link the message to a lead (see `needs_review`) |
 | `update_text` | `text` | not null |
 | `update_date` | `timestamptz` | not null, default `now()` |
 | `next_follow_up` | `date` | nullable |
 | `source` | `text` | not null, `'whatsapp_text'` \| `'whatsapp_voice'` \| `'manual'`, no default (always set explicitly, same as `enquiries.source`) |
 | `source_message_id` | `text` | nullable — WhatsApp message id, for de-dup |
 | `raw_transcript` | `text` | nullable — original Whisper-style transcript, only set for `'whatsapp_voice'` |
+| `needs_review` | `boolean` | not null, default `false` — set by `handle_npd_message()` when it stores a message it couldn't auto-link (no party name extracted, an ambiguous fuzzy match, an unsupported message type, or a Groq/DB error); `update_text` is prefixed `[NEEDS REVIEW: <reason>]` in that case |
 | `created_at` | `timestamptz` | default `now()` |
 
 **Constraints**: partial `unique (source_message_id) where
 source_message_id is not null` — dedups webhook retries the same way
 `enquiries` does, without blocking manual entries that have no source
-message.
+message. Because it's a partial index, backend code dedups via a
+SELECT-then-INSERT (`db.get_npd_update_by_message_id()` before
+`db.insert_npd_update()`), not `upsert(on_conflict=...)` — PostgREST
+can't target a partial index's `WHERE` predicate through that call.
 
-Indexes: `(lead_id)`, `(update_date)`.
+Indexes: `(lead_id)`, `(update_date)`, partial `(needs_review) where
+needs_review` (for a future dashboard "needs review" queue).
 
 **Realtime**: `npd_leads` and `npd_updates` are both added to the
 `supabase_realtime` publication.
+
+### `match_npd_leads(search_name, match_threshold = 0.35, match_count = 5)`
+
+Postgres function (not a table) used by `db.find_matching_npd_leads()` to
+fuzzy-match an extracted `party_name` against `npd_leads.party_name` in
+one indexed DB round trip — see "WhatsApp NPD ingestion" below. Returns
+`(id, party_name, stage, similarity)`, ranked by `similarity()` descending,
+restricted to rows where the trigram `%` operator (which uses
+`idx_npd_leads_party_name_trgm`) matches at `match_threshold`.

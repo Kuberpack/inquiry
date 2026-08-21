@@ -93,3 +93,84 @@ def extract_fields(message_text: str) -> dict:
 
     data.setdefault("is_business_relevant", True)
     return data
+
+
+# Single source of truth is schema.md's "stage values" table, which mirrors
+# the `npd_leads.stage` check constraint in npd-schema.sql — Phase 6's
+# dashboard Kanban columns reuse this same list, so keep them in sync.
+NPD_STAGES = [
+    "New Lead",
+    "In Progress (Samples/Rates)",
+    "Awaiting Response",
+    "Rate Negotiation",
+    "On Hold",
+    "Active/Won",
+    "Rate Mismatch (Lost)",
+]
+
+NPD_EXTRACTION_PROMPT = """You are logging a WhatsApp update into a New Product Development (NPD)
+leads pipeline for a corrugated packaging company. Each message is an update from a salesperson
+about a prospective customer/party they are developing as a lead. Read the message below and
+return ONLY a JSON object (no markdown fences, no preamble, no explanation) with these exact
+fields:
+
+{{
+  "party_name": the name of the customer/prospect company (or contact) this update is about, as
+                written in the message — or null if the message doesn't clearly name a party,
+  "update_summary": a one-sentence, past-tense summary of what happened or was communicated,
+                    suitable to log against the lead (e.g. "Samples submitted, awaiting
+                    feedback"),
+  "stage_guess": your best guess at which pipeline stage this update implies the lead is now at,
+                 one of exactly these values: {stages} — or null if the message doesn't give
+                 enough signal to guess a stage,
+  "next_follow_up_date": an ISO 8601 date (YYYY-MM-DD) if the message states or clearly implies
+                         a next follow-up date, otherwise null
+}}
+
+Today's date is {today}.
+
+Message:
+---
+{message_text}
+---
+
+Return only the JSON object.
+"""
+
+
+def extract_npd_update(message_text: str) -> dict:
+    """Call Groq to turn a raw NPD WhatsApp message into {party_name, update_summary,
+    stage_guess, next_follow_up_date}. Same fail-open pattern as extract_fields(): on any
+    Groq/parse error, return party_name=None (handle_npd_message treats that as "can't
+    auto-link, flag for manual review") rather than crashing or guessing a party."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    prompt = NPD_EXTRACTION_PROMPT.format(
+        today=today, message_text=message_text, stages=", ".join(NPD_STAGES)
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=512,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+
+        data = json.loads(raw)
+    except Exception as exc:
+        print(f"extract_npd_update failed for {message_text[:120]!r}: {exc}")
+        data = {
+            "party_name": None,
+            "update_summary": message_text[:140],
+            "stage_guess": None,
+            "next_follow_up_date": None,
+        }
+
+    if data.get("stage_guess") not in NPD_STAGES:
+        data["stage_guess"] = None
+
+    return data
